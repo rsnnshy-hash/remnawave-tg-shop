@@ -205,17 +205,30 @@ async def process_successful_payment(session: AsyncSession, bot: Bot,
                 f"DB Error: Could not update payment record {payment_db_id}")
 
         months_for_activation = int(subscription_months) if sale_mode != "traffic" else 0
-        activation_details = await subscription_service.activate_subscription(
-            session,
-            user_id,
-            months_for_activation,
-            payment_value,
-            payment_db_id,
-            promo_code_id_from_payment=promo_code_id,
-            provider="yookassa",
-            sale_mode=sale_mode,
-            traffic_gb=traffic_amount_gb if sale_mode == "traffic" else None,
-        )
+        
+        # Check if this is a new subscription purchase
+        if sale_mode == "new_subscription":
+            activation_details = await subscription_service.create_additional_subscription(
+                session,
+                user_id,
+                months_for_activation,
+                payment_value,
+                payment_db_id,
+                promo_code_id_from_payment=promo_code_id,
+                provider="yookassa",
+            )
+        else:
+            activation_details = await subscription_service.activate_subscription(
+                session,
+                user_id,
+                months_for_activation,
+                payment_value,
+                payment_db_id,
+                promo_code_id_from_payment=promo_code_id,
+                provider="yookassa",
+                sale_mode=sale_mode,
+                traffic_gb=traffic_amount_gb if sale_mode == "traffic" else None,
+            )
 
         if not activation_details or not activation_details.get('end_date'):
             logging.error(

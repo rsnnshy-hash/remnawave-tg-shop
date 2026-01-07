@@ -92,7 +92,7 @@ def get_trial_confirmation_keyboard(lang: str,
 
 def get_subscription_options_keyboard(subscription_options: Dict[
     float, Optional[float]], currency_symbol_val: str, lang: str,
-                                      i18n_instance, traffic_mode: bool = False) -> InlineKeyboardMarkup:
+                                      i18n_instance, traffic_mode: bool = False, sale_mode: str = "subscription") -> InlineKeyboardMarkup:
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
     def _format_gb(val: float) -> str:
@@ -107,13 +107,13 @@ def get_subscription_options_keyboard(subscription_options: Dict[
                         price=price,
                         currency_symbol=currency_symbol_val,
                     )
-                    callback_data = f"subscribe_period:{_format_gb(months)}"
+                    callback_data = f"subscribe_period:{_format_gb(months)}:{sale_mode}"
                 else:
                     button_text = _("subscribe_for_months_button",
                                     months=months,
                                     price=price,
                                     currency_symbol=currency_symbol_val)
-                    callback_data = f"subscribe_period:{months}"
+                    callback_data = f"subscribe_period:{months}:{sale_mode}"
                 builder.button(text=button_text,
                                callback_data=callback_data)
         builder.adjust(1)
@@ -648,11 +648,11 @@ def get_subscription_details_keyboard(
         )
     )
     
-    # Back to subscriptions list
+    # Back to main menu
     builder.row(
         InlineKeyboardButton(
-            text=_("back_button"),
-            callback_data="main_action:my_subscription"
+            text=_("back_to_main_menu_button"),
+            callback_data="main_action:back_to_main"
         )
     )
     
