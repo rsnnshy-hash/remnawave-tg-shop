@@ -241,3 +241,32 @@ async def find_subscription_for_notification_update(
 
 
 
+
+
+async def get_all_user_subscriptions(session: AsyncSession, user_id: int) -> List[Subscription]:
+    """Get all subscriptions for a user (active and inactive)."""
+    stmt = select(Subscription).where(
+        Subscription.user_id == user_id
+    ).order_by(Subscription.end_date.desc())
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def get_subscription_by_id(session: AsyncSession, subscription_id: int) -> Optional[Subscription]:
+    """Get subscription by its ID."""
+    return await session.get(Subscription, subscription_id)
+
+
+async def get_user_subscription_count(session: AsyncSession, user_id: int) -> int:
+    """Count total subscriptions for a user."""
+    stmt = select(func.count(Subscription.subscription_id)).where(
+        Subscription.user_id == user_id
+    )
+    result = await session.execute(stmt)
+    return result.scalar() or 0
+
+
+async def get_next_subscription_number(session: AsyncSession, user_id: int) -> int:
+    """Get the next subscription number for naming (tg_123_1, tg_123_2, etc.)."""
+    count = await get_user_subscription_count(session, user_id)
+    return count + 1

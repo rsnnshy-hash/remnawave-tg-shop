@@ -1057,3 +1057,174 @@ class SubscriptionService:
         if self.settings.parsed_user_external_squad_uuid:
             payload["externalSquadUuid"] = self.settings.parsed_user_external_squad_uuid
         return payload
+
+    async def create_additional_subscription(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        months: int,
+        payment_amount: float,
+        payment_db_id: int,
+        promo_code_id_from_payment: Optional[int] = None,
+        provider: str = "yookassa",
+    ) -> Optional[Dict[str, Any]]:
+        """Create a new additional subscription for user (not extend existing)."""
+        from db.dal import subscription_dal
+        
+        db_user = await user_dal.get_user_by_id(session, user_id)
+        if not db_user:
+            logging.error(f"User {user_id} not found in DB for additional subscription.")
+            return None
+
+        # Get next subscription number
+        next_num = await subscription_dal.get_next_subscription_number(session, user_id)
+        new_panel_username = f"tg_{user_id}_{next_num}"
+        
+        logging.info(f"Creating additional subscription for user {user_id} with panel username: {new_panel_username}")
+
+        # Create new panel user for this subscription
+        creation_response = await self.panel_service.create_panel_user(
+            username_on_panel=new_panel_username,
+            telegram_id=None,  # Don't link to telegram_id to allow multiple
+            description=f"Additional subscription #{next_num}\n" + "\n".join([
+                (db_user.username or "") if db_user else "",
+                (db_user.first_name or "") if db_user else "",
+            ]),
+            specific_squad_uuids=self.settings.parsed_user_squad_uuids,
+            external_squad_uuid=self.settings.parsed_user_external_squad_uuid,
+            default_traffic_limit_bytes=self.settings.user_traffic_limit_bytes,
+            default_traffic_limit_strategy=self.settings.USER_TRAFFIC_STRATEGY,
+        )
+
+        if not creation_response or creation_response.get("error") or not creation_response.get("response"):
+            logging.error(f"Failed to create panel user {new_panel_username} for additional subscription: {creation_response}")
+            return None
+
+        panel_user_obj = creation_response.get("response")
+        panel_user_uuid = panel_user_obj.get("uuid")
+        panel_sub_link_id = panel_user_obj.get("subscriptionUuid") or panel_user_obj.get("shortUuid")
+        panel_short_uuid = panel_user_obj.get("shortUuid")
+
+        if not panel_user_uuid or not panel_sub_link_id:
+            logging.error(f"Missing UUID or subscription link for new panel user {new_panel_username}")
+            return None
+
+        # Calculate dates
+        try:
+            months_int = int(months)
+        except Exception:
+            months_int = 1
+
+        start_date = datetime.now(timezone.utc)
+        end_after_months = add_months(start_date, months_int)
+        duration_days_total = (end_after_months - start_date).days
+        applied_promo_bonus_days = 0
+
+        # Apply promo code if provided
+        if promo_code_id_from_payment:
+            promo_model = await promo_code_dal.get_promo_code_by_id(session, promo_code_id_from_payment)
+            if promo_model and promo_model.is_active and promo_model.current_activations < promo_model.max_activations:
+                applied_promo_bonus_days = promo_model.bonus_days
+                duration_days_total += applied_promo_bonus_days
+                activation = await promo_code_dal.record_promo_activation(
+                    session, promo_code_id_from_payment, user_id, payment_id=payment_db_id
+                )
+                if activation:
+                    await promo_code_dal.increment_promo_code_usage(session, promo_code_id_from_payment)
+
+        final_end_date = start_date + timedelta(days=duration_days_total)
+
+        # Create subscription in local DB
+        sub_payload = {
+            "user_id": user_id,
+            "panel_user_uuid": panel_user_uuid,
+            "panel_subscription_uuid": panel_sub_link_id,
+            "subscription_name": new_panel_username,
+            "start_date": start_date,
+            "end_date": final_end_date,
+            "duration_months": months_int,
+            "is_active": True,
+            "status_from_panel": "ACTIVE",
+            "traffic_limit_bytes": self.settings.user_traffic_limit_bytes,
+            "provider": provider,
+            "skip_notifications": False,
+            "auto_renew_enabled": False,
+        }
+
+        try:
+            new_sub = await subscription_dal.upsert_subscription(session, sub_payload)
+        except Exception as e:
+            logging.error(f"Failed to create subscription record for user {user_id}: {e}", exc_info=True)
+            return None
+
+        # Update panel user with expiry date
+        panel_update_payload = self._build_panel_update_payload(
+            panel_user_uuid=panel_user_uuid,
+            expire_at=final_end_date,
+            status="ACTIVE",
+            traffic_limit_bytes=self.settings.user_traffic_limit_bytes,
+        )
+        panel_update_payload["description"] = f"Subscription #{next_num}\n" + "\n".join([
+            (db_user.username or "") if db_user else "",
+            (db_user.first_name or "") if db_user else "",
+        ])
+
+        updated_panel_user = await self.panel_service.update_user_details_on_panel(
+            panel_user_uuid, panel_update_payload
+        )
+
+        if not updated_panel_user or updated_panel_user.get("error"):
+            logging.warning(f"Panel update failed for new subscription {panel_user_uuid}: {updated_panel_user}")
+            return None
+
+        final_subscription_url = updated_panel_user.get("subscriptionUrl")
+        final_panel_short_uuid = updated_panel_user.get("shortUuid", panel_short_uuid)
+
+        return {
+            "subscription_id": new_sub.subscription_id,
+            "subscription_name": new_panel_username,
+            "end_date": final_end_date,
+            "is_active": True,
+            "panel_user_uuid": panel_user_uuid,
+            "panel_short_uuid": final_panel_short_uuid,
+            "subscription_url": final_subscription_url,
+            "applied_promo_bonus_days": applied_promo_bonus_days,
+        }
+
+    async def get_all_active_subscriptions_details(
+        self, session: AsyncSession, user_id: int
+    ) -> List[Dict[str, Any]]:
+        """Get details of all active subscriptions for a user."""
+        from db.dal import subscription_dal
+        
+        subscriptions = await subscription_dal.get_active_subscriptions_for_user(session, user_id)
+        results = []
+        
+        for sub in subscriptions:
+            panel_user_data = await self.panel_service.get_user_by_uuid(sub.panel_user_uuid)
+            if not panel_user_data:
+                continue
+                
+            panel_end_date = (
+                datetime.fromisoformat(panel_user_data["expireAt"].replace("Z", "+00:00"))
+                if panel_user_data.get("expireAt")
+                else None
+            )
+            
+            config_link_raw = panel_user_data.get("subscriptionUrl")
+            display_link, connect_button_url = await prepare_config_links(self.settings, config_link_raw)
+            
+            results.append({
+                "subscription_id": sub.subscription_id,
+                "subscription_name": sub.subscription_name or f"tg_{user_id}",
+                "user_id": panel_user_data.get("uuid"),
+                "end_date": panel_end_date or sub.end_date,
+                "status_from_panel": panel_user_data.get("status", "UNKNOWN").upper(),
+                "config_link": display_link,
+                "connect_button_url": connect_button_url,
+                "traffic_limit_bytes": panel_user_data.get("trafficLimitBytes"),
+                "traffic_used_bytes": (panel_user_data.get("userTraffic") or {}).get("usedTrafficBytes"),
+                "is_active": sub.is_active,
+            })
+        
+        return results

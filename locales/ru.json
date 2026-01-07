@@ -486,5 +486,12 @@
   "admin_ads_delete_confirm": "Вы уверены, что хотите удалить кампанию #{id}? Это действие необратимо.",
   "admin_ads_deleted_success": "Кампания удалена.",
   "admin_ads_not_found": "Кампания не найдена.",
-  "free_kassa_order_full": "Заказ №{order_id} от {date}\n\n"
+  "free_kassa_order_full": "Заказ №{order_id} от {date}\n\n",
+  "buy_new_subscription_button": "Купить ещё одну подписку",
+  "extend_subscription_button": "Продлить",
+  "back_button": "⬅️ Назад",
+  "subscription_choice_title": "💡 Продление подписки\n\n✅ При продлении подписки вам НЕ нужно заново настраивать приложение!\nВремя подписки будет продлено на выбранный период.\n\n👇 Выберите подписку для продления:",
+  "my_subscriptions_title": "📦 Мои подписки\n\n👤 Имя: {user_name}\n🆔 ID: {user_id}\n\n📋 Ваши подписки:",
+  "subscription_details_title": "🔐 Моя подписка ({sub_name})\n\n⏰ Статус: {status}\n📅 Действует до: {end_date}\n📆 Осталось дней: {days_left}\n\n🔗 Ссылка на конфигурацию:\n{config_link}\n\n📊 Трафик:\nЛимит: {traffic_limit}\nИспользовано: {traffic_used}",
+  "no_active_subscriptions": "У вас нет активных подписок."
 }

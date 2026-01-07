@@ -63,6 +63,7 @@ class Subscription(Base):
                      nullable=False,
                      index=True)
     panel_user_uuid = Column(String, nullable=False, index=True)
+    subscription_name = Column(String, nullable=True)  # Название подписки (tg_123_1, tg_123_2...)
     panel_subscription_uuid = Column(String,
                                      unique=True,
                                      index=True,

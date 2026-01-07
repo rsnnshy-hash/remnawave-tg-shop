@@ -531,3 +531,129 @@ def get_autorenew_confirm_keyboard(enable: bool, sub_id: int, lang: str, i18n_in
         InlineKeyboardButton(text=_(key="no_button"), callback_data="main_action:my_subscription"),
     )
     return builder.as_markup()
+
+
+def get_subscription_choice_keyboard(
+    subscriptions: list,
+    lang: str,
+    i18n_instance,
+    settings: Settings
+) -> InlineKeyboardMarkup:
+    """Keyboard for choosing between extending existing subscription or buying new one."""
+    _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
+    builder = InlineKeyboardBuilder()
+    
+    # Show existing subscriptions with extend option
+    for sub in subscriptions:
+        sub_name = sub.get("subscription_name", "Подписка")
+        end_date = sub.get("end_date")
+        end_date_str = end_date.strftime("%d.%m.%Y") if end_date else "N/A"
+        sub_id = sub.get("subscription_id")
+        
+        button_text = f"⏳ Продлить | {sub_name} | до {end_date_str}"
+        builder.row(
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"extend_sub:{sub_id}"
+            )
+        )
+    
+    # Button to buy new subscription
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ " + _("buy_new_subscription_button"),
+            callback_data="buy_new_subscription"
+        )
+    )
+    
+    # Back button
+    builder.row(
+        InlineKeyboardButton(
+            text=_("back_to_main_menu_button"),
+            callback_data="main_action:back_to_main"
+        )
+    )
+    
+    return builder.as_markup()
+
+
+def get_my_subscriptions_keyboard(
+    subscriptions: list,
+    lang: str,
+    i18n_instance
+) -> InlineKeyboardMarkup:
+    """Keyboard for viewing list of user's subscriptions."""
+    _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
+    builder = InlineKeyboardBuilder()
+    
+    for sub in subscriptions:
+        sub_name = sub.get("subscription_name", "Подписка")
+        end_date = sub.get("end_date")
+        end_date_str = end_date.strftime("%d.%m.%Y") if end_date else "N/A"
+        sub_id = sub.get("subscription_id")
+        status = "✅" if sub.get("is_active") else "❌"
+        
+        button_text = f"{status} {sub_name} | до {end_date_str}"
+        builder.row(
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"view_sub:{sub_id}"
+            )
+        )
+    
+    # Back button
+    builder.row(
+        InlineKeyboardButton(
+            text=_("back_to_main_menu_button"),
+            callback_data="main_action:back_to_main"
+        )
+    )
+    
+    return builder.as_markup()
+
+
+def get_subscription_details_keyboard(
+    subscription_id: int,
+    config_link: str,
+    connect_button_url: str,
+    lang: str,
+    i18n_instance,
+    settings: Settings
+) -> InlineKeyboardMarkup:
+    """Keyboard for single subscription details view."""
+    _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
+    builder = InlineKeyboardBuilder()
+    
+    # Connect button
+    if settings.SUBSCRIPTION_MINI_APP_URL:
+        builder.row(
+            InlineKeyboardButton(
+                text=_("connect_button"),
+                web_app=WebAppInfo(url=settings.SUBSCRIPTION_MINI_APP_URL),
+            )
+        )
+    elif connect_button_url or config_link:
+        builder.row(
+            InlineKeyboardButton(
+                text=_("connect_button"),
+                url=connect_button_url or config_link,
+            )
+        )
+    
+    # Extend this subscription button
+    builder.row(
+        InlineKeyboardButton(
+            text="⏳ " + _("extend_subscription_button"),
+            callback_data=f"extend_sub:{subscription_id}"
+        )
+    )
+    
+    # Back to subscriptions list
+    builder.row(
+        InlineKeyboardButton(
+            text=_("back_button"),
+            callback_data="main_action:my_subscription"
+        )
+    )
+    
+    return builder.as_markup()
