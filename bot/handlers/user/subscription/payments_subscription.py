@@ -33,9 +33,11 @@ async def select_subscription_period_callback_handler(
     stars_traffic_packages = getattr(settings, "stars_traffic_packages", {}) or {}
     traffic_mode = bool(getattr(settings, "traffic_sale_mode", False) or stars_traffic_packages)
     try:
+        # Format: subscribe_period:{months}:{sale_mode}:{panel_user_uuid}
         parts = callback.data.split(":")
         months = float(parts[1])
         sale_mode = parts[2] if len(parts) > 2 else ("traffic" if traffic_mode else "subscription")
+        panel_user_uuid = parts[3] if len(parts) > 3 else None
     except (ValueError, IndexError):
         logging.error(f"Invalid subscription period in callback_data: {callback.data}")
         try:
@@ -94,6 +96,7 @@ async def select_subscription_period_callback_handler(
         i18n,
         settings,
         sale_mode=sale_mode,
+        panel_user_uuid=panel_user_uuid,
     )
 
     try:

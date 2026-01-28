@@ -92,11 +92,13 @@ def get_trial_confirmation_keyboard(lang: str,
 
 def get_subscription_options_keyboard(subscription_options: Dict[
     float, Optional[float]], currency_symbol_val: str, lang: str,
-                                      i18n_instance, traffic_mode: bool = False, sale_mode: str = "subscription") -> InlineKeyboardMarkup:
+                                      i18n_instance, traffic_mode: bool = False, sale_mode: str = "subscription", panel_user_uuid: Optional[str] = None) -> InlineKeyboardMarkup:
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
     def _format_gb(val: float) -> str:
         return str(int(val)) if float(val).is_integer() else f"{val:g}"
+    # Add panel_user_uuid to callback if provided
+    uuid_suffix = f":{panel_user_uuid}" if panel_user_uuid else ""
     if subscription_options:
         for months, price in subscription_options.items():
             if price is not None:
@@ -107,13 +109,13 @@ def get_subscription_options_keyboard(subscription_options: Dict[
                         price=price,
                         currency_symbol=currency_symbol_val,
                     )
-                    callback_data = f"subscribe_period:{_format_gb(months)}:{sale_mode}"
+                    callback_data = f"subscribe_period:{_format_gb(months)}:{sale_mode}{uuid_suffix}"
                 else:
                     button_text = _("subscribe_for_months_button",
                                     months=months,
                                     price=price,
                                     currency_symbol=currency_symbol_val)
-                    callback_data = f"subscribe_period:{months}:{sale_mode}"
+                    callback_data = f"subscribe_period:{months}:{sale_mode}{uuid_suffix}"
                 builder.button(text=button_text,
                                callback_data=callback_data)
         builder.adjust(1)
@@ -126,13 +128,15 @@ def get_subscription_options_keyboard(subscription_options: Dict[
 def get_payment_method_keyboard(months: int, price: float,
                                 stars_price: Optional[int],
                                 currency_symbol_val: str, lang: str,
-                                i18n_instance, settings: Settings, sale_mode: str = "subscription") -> InlineKeyboardMarkup:
+                                i18n_instance, settings: Settings, sale_mode: str = "subscription", panel_user_uuid: Optional[str] = None) -> InlineKeyboardMarkup:
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
     def _format_value(val: float) -> str:
         return str(int(val)) if float(val).is_integer() else f"{val:g}"
     value_str = _format_value(months)
-    mode_suffix = f":{sale_mode}"
+    # Include panel_user_uuid in callback if provided
+    uuid_suffix = f":{panel_user_uuid}" if panel_user_uuid else ""
+    mode_suffix = f":{sale_mode}{uuid_suffix}"
     for method in settings.payment_methods_order:
         if method == "severpay" and getattr(settings, "SEVERPAY_ENABLED", False):
             builder.button(
@@ -195,6 +199,7 @@ def get_yk_autopay_choice_keyboard(
     i18n_instance,
     has_saved_cards: bool = True,
     sale_mode: str = "subscription",
+    panel_user_uuid: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
     """Keyboard for choosing between saved card charge or new card payment when auto-renew is enabled."""
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
@@ -203,7 +208,8 @@ def get_yk_autopay_choice_keyboard(
     def _format_value(val: float) -> str:
         return str(int(val)) if float(val).is_integer() else f"{val:g}"
     value_str = _format_value(months)
-    suffix = f":{sale_mode}"
+    uuid_suffix = f":{panel_user_uuid}" if panel_user_uuid else ""
+    suffix = f":{sale_mode}{uuid_suffix}"
     if has_saved_cards:
         builder.row(
             InlineKeyboardButton(
@@ -234,6 +240,7 @@ def get_yk_saved_cards_keyboard(
     i18n_instance,
     page: int = 0,
     sale_mode: str = "subscription",
+    panel_user_uuid: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
     """Paginated keyboard for selecting a saved YooKassa card."""
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
@@ -246,7 +253,8 @@ def get_yk_saved_cards_keyboard(
     def _format_value(val: float) -> str:
         return str(int(val)) if float(val).is_integer() else f"{val:g}"
     value_str = _format_value(months)
-    suffix = f":{sale_mode}"
+    uuid_suffix = f":{panel_user_uuid}" if panel_user_uuid else ""
+    suffix = f":{sale_mode}{uuid_suffix}"
 
     for method_id, title in cards[start:end]:
         builder.row(
@@ -542,22 +550,35 @@ def get_subscription_choice_keyboard(
     """Keyboard for choosing between extending existing subscription or buying new one."""
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
-    
+
     # Show existing subscriptions with extend option
     for sub in subscriptions:
         sub_name = sub.get("subscription_name", "Подписка")
         end_date = sub.get("end_date")
         end_date_str = end_date.strftime("%d.%m.%Y") if end_date else "N/A"
+        panel_user_uuid = sub.get("panel_user_uuid")
         sub_id = sub.get("subscription_id")
-        
-        button_text = f"⏳ Продлить | {sub_name} | до {end_date_str}"
+        status = sub.get("status_from_panel", "UNKNOWN")
+
+        # Status indicator
+        status_icon = "✅" if status == "ACTIVE" else "⏳" if status == "EXPIRED" else "❓"
+
+        button_text = f"{status_icon} {sub_name} | до {end_date_str}"
+        # Use panel_user_uuid if available, otherwise fall back to sub_id
+        if panel_user_uuid:
+            callback_data = f"extend_sub:uuid:{panel_user_uuid}"
+        elif sub_id:
+            callback_data = f"extend_sub:{sub_id}"
+        else:
+            continue  # Skip if no identifier
+
         builder.row(
             InlineKeyboardButton(
                 text=button_text,
-                callback_data=f"extend_sub:{sub_id}"
+                callback_data=callback_data
             )
         )
-    
+
     # Button to buy new subscription
     builder.row(
         InlineKeyboardButton(
@@ -565,7 +586,7 @@ def get_subscription_choice_keyboard(
             callback_data="buy_new_subscription"
         )
     )
-    
+
     # Back button
     builder.row(
         InlineKeyboardButton(
@@ -573,7 +594,7 @@ def get_subscription_choice_keyboard(
             callback_data="main_action:back_to_main"
         )
     )
-    
+
     return builder.as_markup()
 
 

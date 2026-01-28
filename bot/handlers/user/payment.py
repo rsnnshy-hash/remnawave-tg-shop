@@ -47,6 +47,7 @@ async def process_successful_payment(session: AsyncSession, bot: Bot,
     payment_db_id_str = metadata.get("payment_db_id")
     auto_renew_subscription_id_str = metadata.get(
         "auto_renew_for_subscription_id")
+    panel_user_uuid_from_metadata = metadata.get("panel_user_uuid")
 
     # For auto-renew payments, payment_db_id may be absent. In that case,
     # we will create/ensure a payment record idempotently using provider payment id.
@@ -205,12 +206,24 @@ async def process_successful_payment(session: AsyncSession, bot: Bot,
                 f"DB Error: Could not update payment record {payment_db_id}")
 
         months_for_activation = int(subscription_months) if sale_mode != "traffic" else 0
-        
+
         # Check if this is a new subscription purchase
         if sale_mode == "new_subscription":
             activation_details = await subscription_service.create_additional_subscription(
                 session,
                 user_id,
+                months_for_activation,
+                payment_value,
+                payment_db_id,
+                promo_code_id_from_payment=promo_code_id,
+                provider="yookassa",
+            )
+        elif panel_user_uuid_from_metadata:
+            # Use specific panel_user_uuid for extending selected subscription
+            activation_details = await subscription_service.activate_subscription_for_panel_uuid(
+                session,
+                user_id,
+                panel_user_uuid_from_metadata,
                 months_for_activation,
                 payment_value,
                 payment_db_id,

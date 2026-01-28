@@ -486,5 +486,14 @@
   "admin_ads_delete_confirm": "Are you sure you want to delete campaign #{id}? This action is irreversible.",
   "admin_ads_deleted_success": "Campaign deleted.",
   "admin_ads_not_found": "Campaign not found.",
-  "free_kassa_order_full": "Order #{order_id} from {date}\n\n"
+  "free_kassa_order_full": "Order #{order_id} from {date}\n\n",
+  "buy_new_subscription_button": "Buy another subscription",
+  "extend_subscription_button": "Extend",
+  "back_button": "⬅️ Back",
+  "subscription_choice_title": "💡 Subscription Extension\n\n✅ When extending your subscription, you DON'T need to reconfigure the app!\nYour subscription time will be extended by the selected period.\n\n👇 Select a subscription to extend:",
+  "my_subscriptions_title": "📦 My Subscriptions\n\n👤 Name: {user_name}\n🆔 ID: {user_id}\n\n📋 Your subscriptions:",
+  "subscription_details_title": "🔐 My Subscription ({sub_name})\n\n⏰ Status: {status}\n📅 Valid until: {end_date}\n📆 Days left: {days_left}\n\n🔗 Config link:\n{config_link}\n\n📊 Traffic:\nLimit: {traffic_limit}\nUsed: {traffic_used}",
+  "no_active_subscriptions": "You don't have any active subscriptions.",
+  "referral_bonus_received": "🎁 <b>Welcome!</b>\n\nYou registered via referral link and receive <b>{days} days</b> of free VPN!",
+  "referral_friend_joined": "🎉 <b>Great news!</b>\n\nYour friend <b>{friend_name}</b> joined using your link!\n\n💰 You'll get <b>{bonus_days} days</b> bonus when they pay for any subscription."
 }

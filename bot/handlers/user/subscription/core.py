@@ -50,6 +50,7 @@ async def display_subscription_options(
     subscription_service: Optional[SubscriptionService] = None,
     extend_subscription_id: Optional[int] = None,
     is_new_subscription: bool = False,
+    panel_user_uuid: Optional[str] = None,
 ):
     """Display subscription options. If user has active subscriptions, show choice first."""
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
@@ -68,16 +69,32 @@ async def display_subscription_options(
         return
 
     user_id = event.from_user.id
-    
+
     # Check if user has active subscriptions and should see choice screen
-    if subscription_service and not extend_subscription_id and not is_new_subscription:
+    if subscription_service and not extend_subscription_id and not is_new_subscription and not panel_user_uuid:
         try:
             active_subs = await subscription_service.get_all_active_subscriptions_details(session, user_id)
+            # Also get all panel keys to show keys not yet in local DB
+            all_panel_keys = await subscription_service.get_all_panel_keys_for_user(user_id)
+
+            # Merge local subscriptions with panel keys
+            local_uuids = {s.get("panel_user_uuid") for s in active_subs if s.get("panel_user_uuid")}
+            for pk in all_panel_keys:
+                if pk.get("panel_user_uuid") not in local_uuids:
+                    active_subs.append({
+                        "subscription_id": None,
+                        "subscription_name": pk.get("username"),
+                        "panel_user_uuid": pk.get("panel_user_uuid"),
+                        "end_date": pk.get("end_date"),
+                        "status_from_panel": pk.get("status", "UNKNOWN"),
+                        "is_active": pk.get("status") == "ACTIVE",
+                    })
+
             if active_subs and len(active_subs) > 0:
                 # Show subscription choice screen
                 text_content = get_text("subscription_choice_title")
                 reply_markup = get_subscription_choice_keyboard(active_subs, current_lang, i18n, settings)
-                
+
                 target_message_obj = event.message if isinstance(event, types.CallbackQuery) else event
                 if target_message_obj:
                     if isinstance(event, types.CallbackQuery):
@@ -117,7 +134,7 @@ async def display_subscription_options(
         # Determine sale_mode based on context
         effective_sale_mode = "new_subscription" if is_new_subscription else ("traffic" if traffic_mode else "subscription")
         reply_markup = get_subscription_options_keyboard(
-            options, currency_symbol_val, current_lang, i18n, traffic_mode=traffic_mode, sale_mode=effective_sale_mode
+            options, currency_symbol_val, current_lang, i18n, traffic_mode=traffic_mode, sale_mode=effective_sale_mode, panel_user_uuid=panel_user_uuid
         )
     else:
         text_content = get_text("no_subscription_options_available")
@@ -173,20 +190,50 @@ async def extend_subscription_callback(
     i18n_data: dict,
     settings: Settings,
     session: AsyncSession,
+    panel_service: PanelApiService,
 ):
     """Handle extending an existing subscription."""
+    current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
+    i18n: JsonI18n = i18n_data.get("i18n_instance")
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw) if i18n else key
+
     try:
-        sub_id = int(callback.data.split(":")[1])
+        parts = callback.data.split(":")
+        # Format can be extend_sub:{sub_id} or extend_sub:uuid:{panel_user_uuid}
+        if parts[1] == "uuid":
+            # Direct panel_user_uuid passed
+            panel_user_uuid = parts[2]
+            sub_id = None
+        else:
+            sub_id = int(parts[1])
+            panel_user_uuid = None
     except (ValueError, IndexError):
-        await callback.answer("Error", show_alert=True)
+        await callback.answer(get_text("error_try_again"), show_alert=True)
         return
-    
-    # Store the subscription ID for later use in payment flow
-    # We'll pass it through the payment process
+
+    # Get panel_user_uuid from subscription if sub_id provided
+    if sub_id and not panel_user_uuid:
+        sub = await subscription_dal.get_subscription_by_id(session, sub_id)
+        if sub and sub.user_id == callback.from_user.id:
+            panel_user_uuid = sub.panel_user_uuid
+        else:
+            await callback.answer(get_text("error_try_again"), show_alert=True)
+            return
+
+    # Verify panel_user_uuid belongs to this user
+    if panel_user_uuid:
+        panel_user_data = await panel_service.get_user_by_uuid(panel_user_uuid)
+        if panel_user_data:
+            panel_tg_id = panel_user_data.get("telegramId")
+            if panel_tg_id and int(panel_tg_id) != callback.from_user.id:
+                await callback.answer(get_text("error_try_again"), show_alert=True)
+                return
+
     await display_subscription_options(
-        callback, i18n_data, settings, session, 
-        extend_subscription_id=sub_id, 
-        is_new_subscription=False
+        callback, i18n_data, settings, session,
+        extend_subscription_id=sub_id,
+        is_new_subscription=False,
+        panel_user_uuid=panel_user_uuid,
     )
 
 

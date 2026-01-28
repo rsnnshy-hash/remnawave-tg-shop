@@ -257,6 +257,15 @@ async def get_subscription_by_id(session: AsyncSession, subscription_id: int) ->
     return await session.get(Subscription, subscription_id)
 
 
+async def get_subscription_by_panel_uuid(session: AsyncSession, panel_user_uuid: str) -> Optional[Subscription]:
+    """Get subscription by panel_user_uuid."""
+    stmt = select(Subscription).where(
+        Subscription.panel_user_uuid == panel_user_uuid
+    ).order_by(Subscription.end_date.desc()).limit(1)
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
 async def get_user_subscription_count(session: AsyncSession, user_id: int) -> int:
     """Count total subscriptions for a user."""
     stmt = select(func.count(Subscription.subscription_id)).where(
