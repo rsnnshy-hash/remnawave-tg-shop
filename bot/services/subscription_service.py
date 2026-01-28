@@ -1315,9 +1315,12 @@ class SubscriptionService:
             config_link_raw = panel_user_data.get("subscriptionUrl")
             display_link, connect_button_url = await prepare_config_links(self.settings, config_link_raw)
             
+            # Use username from panel (e.g., Kazbek, Mama_kazbeka) instead of local DB
+            panel_username = panel_user_data.get("username") or sub.subscription_name or f"tg_{user_id}"
+
             results.append({
                 "subscription_id": sub.subscription_id,
-                "subscription_name": sub.subscription_name or f"tg_{user_id}",
+                "subscription_name": panel_username,
                 "user_id": panel_user_data.get("uuid"),
                 "panel_user_uuid": sub.panel_user_uuid,
                 "end_date": panel_end_date or sub.end_date,
