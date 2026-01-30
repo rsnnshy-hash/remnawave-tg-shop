@@ -495,5 +495,6 @@
   "subscription_details_title": "🔐 My Subscription ({sub_name})\n\n⏰ Status: {status}\n📅 Valid until: {end_date}\n📆 Days left: {days_left}\n\n🔗 Config link:\n{config_link}\n\n📊 Traffic:\nLimit: {traffic_limit}\nUsed: {traffic_used}",
   "no_active_subscriptions": "You don't have any active subscriptions.",
   "referral_bonus_received": "🎁 <b>Welcome!</b>\n\nYou registered via referral link and receive <b>{days} days</b> of free VPN!",
-  "referral_friend_joined": "🎉 <b>Great news!</b>\n\nYour friend <b>{friend_name}</b> joined using your link!\n\n💰 You'll get <b>{bonus_days} days</b> bonus when they pay for any subscription."
+  "referral_friend_joined": "🎉 <b>Great news!</b>\n\nYour friend <b>{friend_name}</b> joined using your link!\n\n💰 You'll get <b>{bonus_days} days</b> bonus when they pay for any subscription.",
+  "subscription_expired_label": "expired"
 }

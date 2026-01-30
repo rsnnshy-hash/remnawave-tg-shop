@@ -43,6 +43,15 @@ async def get_active_subscriptions_for_user(session: AsyncSession, user_id: int)
     return result.scalars().all()
 
 
+async def get_all_subscriptions_for_user(session: AsyncSession, user_id: int) -> List[Subscription]:
+    """Get all subscriptions for a user (including expired/inactive)."""
+    stmt = select(Subscription).where(
+        Subscription.user_id == user_id
+    ).order_by(Subscription.end_date.desc())
+    result = await session.execute(stmt)
+    return result.scalars().all()
+
+
 async def update_subscription(
         session: AsyncSession, subscription_id: int,
         update_data: Dict[str, Any]) -> Optional[Subscription]:

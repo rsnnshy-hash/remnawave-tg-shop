@@ -493,5 +493,6 @@
   "subscription_details_title": "🔐 Моя подписка ({sub_name})\n\n⏰ Статус: {status}\n📅 Действует до: {end_date}\n📆 Осталось дней: {days_left}\n\n🔗 Ссылка на конфигурацию:\n{config_link}\n\n📊 Трафик:\nЛимит: {traffic_limit}\nИспользовано: {traffic_used}",
   "no_active_subscriptions": "У вас нет активных подписок.",
   "referral_bonus_received": "🎁 <b>Добро пожаловать!</b>\n\nТы зарегистрировался по реферальной ссылке и получаешь <b>{days} дней</b> бесплатного VPN!",
-  "referral_friend_joined": "🎉 <b>Отличные новости!</b>\n\nТвой друг <b>{friend_name}</b> присоединился по твоей ссылке!\n\n💰 Ты получишь <b>{bonus_days} дней</b> бонуса, когда он оплатит любую подписку."
+  "referral_friend_joined": "🎉 <b>Отличные новости!</b>\n\nТвой друг <b>{friend_name}</b> присоединился по твоей ссылке!\n\n💰 Ты получишь <b>{bonus_days} дней</b> бонуса, когда он оплатит любую подписку.",
+  "subscription_expired_label": "истекла"
 }

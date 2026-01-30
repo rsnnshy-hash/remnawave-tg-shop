@@ -606,22 +606,33 @@ def get_my_subscriptions_keyboard(
     """Keyboard for viewing list of user's subscriptions."""
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
-    
+
     for sub in subscriptions:
         sub_name = sub.get("subscription_name", "Подписка")
         end_date = sub.get("end_date")
         end_date_str = end_date.strftime("%d.%m.%Y") if end_date else "N/A"
         sub_id = sub.get("subscription_id")
-        status = "✅" if sub.get("is_active") else "❌"
-        
-        button_text = f"{status} {sub_name} | до {end_date_str}"
+        is_expired = sub.get("is_expired", False)
+        is_active = sub.get("is_active", False)
+
+        if is_expired:
+            status = "⛔"
+            expired_label = _("subscription_expired_label")
+            button_text = f"{status} {sub_name} | {expired_label}"
+        elif is_active:
+            status = "✅"
+            button_text = f"{status} {sub_name} | до {end_date_str}"
+        else:
+            status = "❌"
+            button_text = f"{status} {sub_name} | до {end_date_str}"
+
         builder.row(
             InlineKeyboardButton(
                 text=button_text,
                 callback_data=f"view_sub:{sub_id}"
             )
         )
-    
+
     # Back button
     builder.row(
         InlineKeyboardButton(
@@ -629,7 +640,7 @@ def get_my_subscriptions_keyboard(
             callback_data="main_action:back_to_main"
         )
     )
-    
+
     return builder.as_markup()
 
 
