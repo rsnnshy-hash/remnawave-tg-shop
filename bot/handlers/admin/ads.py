@@ -46,8 +46,8 @@ async def show_ads_menu(callback: types.CallbackQuery, settings: Settings, i18n_
     await callback.message.edit_text(text, reply_markup=reply_markup)
     try:
         await callback.answer()
-    except Exception:
-        pass
+    except Exception as e:
+        logging.debug(f"Failed to answer callback in show_ads_menu: {e}")
 
 
 @router.callback_query(F.data.startswith("admin_ads:page:"))
@@ -61,7 +61,8 @@ async def ads_list_pagination(callback: types.CallbackQuery, settings: Settings,
 
     try:
         page = int(callback.data.split(":")[2])
-    except Exception:
+    except (ValueError, IndexError) as e:
+        logging.debug(f"Failed to parse page from callback data: {e}")
         page = 0
 
     totals = await ad_dal.get_totals(session)
@@ -101,7 +102,8 @@ async def show_ad_card(callback: types.CallbackQuery, settings: Settings, i18n_d
         return
     try:
         stats = await ad_dal.get_campaign_stats(session, camp_id)
-    except Exception:
+    except Exception as e:
+        logging.warning(f"Failed to get campaign stats for {camp_id}: {e}")
         stats = {"starts": 0, "trials": 0, "payers": 0, "revenue": 0.0}
 
     text = _(
@@ -154,7 +156,8 @@ async def ads_delete_prompt(callback: types.CallbackQuery, settings: Settings, i
     try:
         await callback.message.edit_text(confirm_text, reply_markup=kb)
         await callback.answer()
-    except Exception:
+    except Exception as e:
+        logging.debug(f"Failed to edit message in ads_delete_prompt: {e}")
         await callback.answer()
 
 
@@ -182,7 +185,8 @@ async def ads_delete_cancel(callback: types.CallbackQuery, settings: Settings, i
         return
     try:
         stats = await ad_dal.get_campaign_stats(session, camp_id)
-    except Exception:
+    except Exception as e:
+        logging.warning(f"Failed to get campaign stats for {camp_id}: {e}")
         stats = {"starts": 0, "trials": 0, "payers": 0, "revenue": 0.0}
     text = _(
         "admin_ads_card",
@@ -201,7 +205,8 @@ async def ads_delete_cancel(callback: types.CallbackQuery, settings: Settings, i
     try:
         await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode="HTML")
         await callback.answer()
-    except Exception:
+    except Exception as e:
+        logging.debug(f"Failed to edit message in ads_delete_cancel: {e}")
         await callback.answer()
 
 
@@ -245,7 +250,8 @@ async def ads_delete_confirm(callback: types.CallbackQuery, settings: Settings, 
     try:
         await callback.message.edit_text(text, reply_markup=reply_markup)
         await callback.answer(_("admin_ads_deleted_success"), show_alert=True)
-    except Exception:
+    except Exception as e:
+        logging.debug(f"Failed to edit message in ads_delete_confirm: {e}")
         await callback.answer(_("admin_ads_deleted_success"), show_alert=True)
 @router.callback_query(F.data == "admin_action:ads_create")
 async def ads_create_start(callback: types.CallbackQuery, state: FSMContext, settings: Settings, i18n_data: dict):
@@ -262,8 +268,8 @@ async def ads_create_start(callback: types.CallbackQuery, state: FSMContext, set
     await callback.message.edit_text(_("admin_ads_create_source_prompt"))
     try:
         await callback.answer()
-    except Exception:
-        pass
+    except Exception as e:
+        logging.debug(f"Failed to answer callback in ads_create_start: {e}")
 
 
 @router.message(

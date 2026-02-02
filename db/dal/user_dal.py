@@ -68,8 +68,21 @@ async def ensure_referral_code(session: AsyncSession, user: User) -> str:
     return user.referral_code
 
 
-async def get_user_by_id(session: AsyncSession, user_id: int) -> Optional[User]:
+async def get_user_by_id(session: AsyncSession, user_id: int, for_update: bool = False) -> Optional[User]:
+    """
+    Get user by ID.
+
+    Args:
+        session: Database session
+        user_id: User's Telegram ID
+        for_update: If True, locks the row for update (prevents race conditions)
+
+    Returns:
+        User object or None
+    """
     stmt = select(User).where(User.user_id == user_id)
+    if for_update:
+        stmt = stmt.with_for_update()
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -328,8 +341,10 @@ async def delete_user_and_relations(session: AsyncSession, user_id: int) -> bool
     """Completely remove a user and all dependent records from the database.
 
     This helper ensures we do not leave dangling foreign keys or orphaned data.
+    Uses row locking to prevent race conditions during deletion.
     """
-    user = await get_user_by_id(session, user_id)
+    # Use for_update to lock the row and prevent race conditions
+    user = await get_user_by_id(session, user_id, for_update=True)
     if not user:
         return False
 

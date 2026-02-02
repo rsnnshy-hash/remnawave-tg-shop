@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
@@ -1304,22 +1305,34 @@ class SubscriptionService:
         from db.dal import subscription_dal
 
         subscriptions = await subscription_dal.get_all_subscriptions_for_user(session, user_id)
+        if not subscriptions:
+            return []
+
+        # Fetch all panel data in parallel to avoid N+1 queries
+        panel_tasks = [
+            self.panel_service.get_user_by_uuid(sub.panel_user_uuid)
+            for sub in subscriptions
+        ]
+        panel_results = await asyncio.gather(*panel_tasks, return_exceptions=True)
+
         results = []
-        
-        for sub in subscriptions:
-            panel_user_data = await self.panel_service.get_user_by_uuid(sub.panel_user_uuid)
+        for sub, panel_user_data in zip(subscriptions, panel_results):
+            # Skip if fetch failed or returned exception
+            if isinstance(panel_user_data, Exception):
+                logging.warning(f"Failed to fetch panel data for {sub.panel_user_uuid}: {panel_user_data}")
+                continue
             if not panel_user_data:
                 continue
-                
+
             panel_end_date = (
                 datetime.fromisoformat(panel_user_data["expireAt"].replace("Z", "+00:00"))
                 if panel_user_data.get("expireAt")
                 else None
             )
-            
+
             config_link_raw = panel_user_data.get("subscriptionUrl")
             display_link, connect_button_url = await prepare_config_links(self.settings, config_link_raw)
-            
+
             # Use username from panel (e.g., Kazbek, Mama_kazbeka) instead of local DB
             panel_username = panel_user_data.get("username") or sub.subscription_name or f"tg_{user_id}"
 

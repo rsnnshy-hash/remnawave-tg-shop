@@ -341,7 +341,9 @@ async def promo_export_all_handler(callback: types.CallbackQuery, i18n_data: dic
         await callback.message.answer_document(file, caption=caption)
         
     except Exception as e:
-        await callback.answer(f"❌ Export error: {str(e)}", show_alert=True)
+        logging.error(f"Failed to export promo codes: {e}", exc_info=True)
+        # Don't expose internal error details to users
+        await callback.answer("❌ Export error. Please try again later.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("promo_delete:"))

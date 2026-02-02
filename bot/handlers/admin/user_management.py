@@ -785,7 +785,8 @@ async def process_delete_user_confirmation_handler(message: types.Message,
         await state.clear()
         return
 
-    user_model = await user_dal.get_user_by_id(session, target_user_id)
+    # Use for_update to lock the row during deletion to prevent race conditions
+    user_model = await user_dal.get_user_by_id(session, target_user_id, for_update=True)
     if not user_model:
         await message.answer(
             _(
