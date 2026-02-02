@@ -498,6 +498,7 @@
   "referral_bonus_received": "🎁 <b>Welcome!</b>\n\nYou registered via referral link and receive <b>{days} days</b> of free VPN!",
   "referral_friend_joined": "🎉 <b>Great news!</b>\n\nYour friend <b>{friend_name}</b> joined using your link!\n\n💰 You'll get <b>{bonus_days} days</b> bonus when they pay for any subscription.",
   "periodic_referral_reminder": "🎁 <b>Invite friends — get bonuses!</b>\n\n🎉 <b>Referral program bonuses:</b>\n➜ Friend gets <b>+7 days</b> free upon registration\n➜ You get <b>+15 days</b> for friend's first purchase\n➜ You get <b>+3-30 days</b> for each subsequent purchase\n\n🔗 <b>Your referral link:</b>\n<code>{referral_link}</code>\n\nShare with friends and earn bonuses! 🚀",
+  "periodic_support_reminder": "💬 <b>Need help?</b>\n\nIf you have any questions, connection issues or any inconveniences — contact our support!\n\nWe are always happy to help and will promptly resolve any issue 🤝\n\n👉 Contact support: {support_link}",
   "renewal_reminder_7_days": "📅 <b>Subscription Reminder</b>\n\nYour subscription expires in <b>{days_left} days</b> ({end_date}).\n\n💡 Renew early to keep your VPN access!",
   "renewal_reminder_3_days": "⚠️ <b>Subscription ending soon!</b>\n\nOnly <b>{days_left} days</b> left ({end_date}).\n\n⏰ Don't forget to renew!",
   "renewal_reminder_tomorrow": "🔔 <b>Subscription ends tomorrow!</b>\n\nExpiry date: <b>{end_date}</b>\n\n⚡ Renew now to stay connected!",
