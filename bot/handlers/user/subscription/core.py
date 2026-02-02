@@ -134,7 +134,7 @@ async def display_subscription_options(
         # Determine sale_mode based on context
         effective_sale_mode = "new_subscription" if is_new_subscription else ("traffic" if traffic_mode else "subscription")
         reply_markup = get_subscription_options_keyboard(
-            options, currency_symbol_val, current_lang, i18n, traffic_mode=traffic_mode, sale_mode=effective_sale_mode, panel_user_uuid=panel_user_uuid
+            options, currency_symbol_val, current_lang, i18n, traffic_mode=traffic_mode, sale_mode=effective_sale_mode, sub_id=extend_subscription_id
         )
     else:
         text_content = get_text("no_subscription_options_available")

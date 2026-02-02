@@ -48,7 +48,8 @@ async def process_successful_payment(session: AsyncSession, bot: Bot,
     payment_db_id_str = metadata.get("payment_db_id")
     auto_renew_subscription_id_str = metadata.get(
         "auto_renew_for_subscription_id")
-    panel_user_uuid_from_metadata = metadata.get("panel_user_uuid")
+    # sub_id is used to look up panel_user_uuid for extending specific subscription
+    sub_id_str = metadata.get("sub_id")
 
     # For auto-renew payments, payment_db_id may be absent. In that case,
     # we will create/ensure a payment record idempotently using provider payment id.
@@ -219,18 +220,35 @@ async def process_successful_payment(session: AsyncSession, bot: Bot,
                 promo_code_id_from_payment=promo_code_id,
                 provider="yookassa",
             )
-        elif panel_user_uuid_from_metadata:
-            # Use specific panel_user_uuid for extending selected subscription
-            activation_details = await subscription_service.activate_subscription_for_panel_uuid(
-                session,
-                user_id,
-                panel_user_uuid_from_metadata,
-                months_for_activation,
-                payment_value,
-                payment_db_id,
-                promo_code_id_from_payment=promo_code_id,
-                provider="yookassa",
-            )
+        elif sub_id_str:
+            # Look up panel_user_uuid from subscription record using sub_id
+            from db.dal import subscription_dal
+            extend_sub_id = int(sub_id_str)
+            extend_sub = await subscription_dal.get_subscription_by_id(session, extend_sub_id)
+            if extend_sub and extend_sub.panel_user_uuid:
+                activation_details = await subscription_service.activate_subscription_for_panel_uuid(
+                    session,
+                    user_id,
+                    extend_sub.panel_user_uuid,
+                    months_for_activation,
+                    payment_value,
+                    payment_db_id,
+                    promo_code_id_from_payment=promo_code_id,
+                    provider="yookassa",
+                )
+            else:
+                logging.warning(f"Subscription {extend_sub_id} not found or has no panel_user_uuid, falling back to default activation")
+                activation_details = await subscription_service.activate_subscription(
+                    session,
+                    user_id,
+                    months_for_activation,
+                    payment_value,
+                    payment_db_id,
+                    promo_code_id_from_payment=promo_code_id,
+                    provider="yookassa",
+                    sale_mode=sale_mode,
+                    traffic_gb=traffic_amount_gb if sale_mode == "traffic" else None,
+                )
         else:
             activation_details = await subscription_service.activate_subscription(
                 session,

@@ -22,15 +22,15 @@ def _format_value(val: float) -> str:
     return str(int(val)) if float(val).is_integer() else f"{val:g}"
 
 
-def _parse_offer_payload(payload: str) -> Optional[Tuple[float, float, str, Optional[str]]]:
-    """Parse payload: value:price:sale_mode:panel_user_uuid"""
+def _parse_offer_payload(payload: str) -> Optional[Tuple[float, float, str, Optional[int]]]:
+    """Parse payload: value:price:sale_mode:sub_id"""
     try:
         parts = payload.split(":")
         value = float(parts[0])
         price = float(parts[1])
         sale_mode = parts[2] if len(parts) > 2 else "subscription"
-        panel_user_uuid = parts[3] if len(parts) > 3 else None
-        return value, price, sale_mode, panel_user_uuid
+        sub_id = int(parts[3]) if len(parts) > 3 else None
+        return value, price, sale_mode, sub_id
     except (ValueError, IndexError):
         return None
 
@@ -74,7 +74,7 @@ async def _initiate_yk_payment(
     payment_method_id: Optional[str] = None,
     selected_method_internal_id: Optional[int] = None,
     sale_mode: str = "subscription",
-    panel_user_uuid: Optional[str] = None,
+    sub_id: Optional[int] = None,
 ) -> bool:
     """Create payment record and initiate YooKassa payment (new card or saved card)."""
     if not callback.message:
@@ -130,9 +130,9 @@ async def _initiate_yk_payment(
         yookassa_metadata["traffic_gb"] = str(months)
     if payment_method_id:
         yookassa_metadata["used_saved_payment_method_id"] = payment_method_id
-    # Add panel_user_uuid to metadata for extending specific subscription
-    if panel_user_uuid:
-        yookassa_metadata["panel_user_uuid"] = panel_user_uuid
+    # Add sub_id to metadata for extending specific subscription (webhook will look up panel_user_uuid)
+    if sub_id:
+        yookassa_metadata["sub_id"] = str(sub_id)
 
     receipt_email_for_yk = settings.YOOKASSA_DEFAULT_RECEIPT_EMAIL
 
@@ -366,7 +366,7 @@ async def pay_yk_callback_handler(callback: types.CallbackQuery, settings: Setti
             pass
         return
 
-    months, price_rub, sale_mode, panel_user_uuid = parsed
+    months, price_rub, sale_mode, sub_id = parsed
     user_id = callback.from_user.id
     currency_code_for_yk = "RUB"
     autopay_enabled = bool(settings.yookassa_autopayments_active and sale_mode != "traffic" and not settings.traffic_sale_mode)
@@ -394,7 +394,7 @@ async def pay_yk_callback_handler(callback: types.CallbackQuery, settings: Setti
                     i18n,
                     has_saved_cards=True,
                     sale_mode=sale_mode,
-                    panel_user_uuid=panel_user_uuid,
+                    sub_id=sub_id,
                 ),
             )
         except Exception as e_edit:
@@ -409,7 +409,7 @@ async def pay_yk_callback_handler(callback: types.CallbackQuery, settings: Setti
                         i18n,
                         has_saved_cards=True,
                         sale_mode=sale_mode,
-                        panel_user_uuid=panel_user_uuid,
+                        sub_id=sub_id,
                     ),
                 )
             except Exception:
@@ -435,7 +435,7 @@ async def pay_yk_callback_handler(callback: types.CallbackQuery, settings: Setti
         save_payment_method=autopay_enabled and autopay_require_binding,
         back_callback=f"subscribe_period:{_format_value(months)}",
         sale_mode=sale_mode,
-        panel_user_uuid=panel_user_uuid,
+        sub_id=sub_id,
     )
     try:
         await callback.answer()
@@ -487,7 +487,7 @@ async def pay_yk_new_card_handler(callback: types.CallbackQuery, settings: Setti
             pass
         return
 
-    months, price_rub, sale_mode, panel_user_uuid = parsed
+    months, price_rub, sale_mode, sub_id = parsed
     user_id = callback.from_user.id
     currency_code_for_yk = "RUB"
     autopay_enabled = bool(settings.yookassa_autopayments_active and sale_mode != "traffic" and not settings.traffic_sale_mode)
@@ -510,7 +510,7 @@ async def pay_yk_new_card_handler(callback: types.CallbackQuery, settings: Setti
         save_payment_method=autopay_enabled and autopay_require_binding,
         back_callback=f"subscribe_period:{_format_value(months)}",
         sale_mode=sale_mode,
-        panel_user_uuid=panel_user_uuid,
+        sub_id=sub_id,
     )
     try:
         await callback.answer()
@@ -555,7 +555,7 @@ async def pay_yk_saved_list_handler(callback: types.CallbackQuery, settings: Set
         price_rub = float(parts[1])
         page = int(parts[2]) if len(parts) > 2 else 0
         sale_mode = parts[3] if len(parts) > 3 else "subscription"
-        panel_user_uuid = parts[4] if len(parts) > 4 else None
+        sub_id = int(parts[4]) if len(parts) > 4 else None
     except (ValueError, IndexError):
         logging.error(f"pay_yk_saved_list payload parsing error: {callback.data}")
         try:
@@ -592,7 +592,7 @@ async def pay_yk_saved_list_handler(callback: types.CallbackQuery, settings: Set
                     i18n,
                     has_saved_cards=False,
                     sale_mode=sale_mode,
-                    panel_user_uuid=panel_user_uuid,
+                    sub_id=sub_id,
                 ),
             )
         except Exception as e_edit:
@@ -607,7 +607,7 @@ async def pay_yk_saved_list_handler(callback: types.CallbackQuery, settings: Set
                         i18n,
                         has_saved_cards=False,
                         sale_mode=sale_mode,
-                        panel_user_uuid=panel_user_uuid,
+                        sub_id=sub_id,
                     ),
                 )
             except Exception:
@@ -640,7 +640,7 @@ async def pay_yk_saved_list_handler(callback: types.CallbackQuery, settings: Set
                 i18n,
                 page=page,
                 sale_mode=sale_mode,
-                panel_user_uuid=panel_user_uuid,
+                sub_id=sub_id,
             ),
         )
     except Exception as e_edit:
@@ -656,7 +656,7 @@ async def pay_yk_saved_list_handler(callback: types.CallbackQuery, settings: Set
                     i18n,
                     page=page,
                     sale_mode=sale_mode,
-                    panel_user_uuid=panel_user_uuid,
+                    sub_id=sub_id,
                 ),
             )
         except Exception:
@@ -715,7 +715,7 @@ async def pay_yk_use_saved_handler(callback: types.CallbackQuery, settings: Sett
         months = float(parts[0])
         price_rub = float(parts[1])
         sale_mode = parts[3] if len(parts) > 3 else "subscription"
-        panel_user_uuid = parts[4] if len(parts) > 4 else None
+        sub_id = int(parts[4]) if len(parts) > 4 else None
     except (ValueError, IndexError):
         logging.error(f"pay_yk_use_saved months/price parsing error: {callback.data}")
         try:
@@ -780,7 +780,7 @@ async def pay_yk_use_saved_handler(callback: types.CallbackQuery, settings: Sett
         payment_method_id=selected_method.provider_payment_method_id,
         selected_method_internal_id=selected_method.method_id,
         sale_mode=sale_mode,
-        panel_user_uuid=panel_user_uuid,
+        sub_id=sub_id,
     )
     try:
         await callback.answer()
