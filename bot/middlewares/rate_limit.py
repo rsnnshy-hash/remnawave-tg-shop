@@ -111,3 +111,107 @@ def cleanup_rate_limit_storage():
 
     if expired_keys:
         logging.debug(f"Rate limit cleanup: removed {len(expired_keys)} expired entries")
+
+
+# ============================================================================
+# Aiogram Rate Limiting Middleware (for Telegram messages/callbacks)
+# ============================================================================
+
+from typing import Any, Awaitable, Callable, Set
+from aiogram import BaseMiddleware
+from aiogram.types import Message, CallbackQuery, TelegramObject
+
+
+class TelegramRateLimitMiddleware(BaseMiddleware):
+    """
+    Middleware that implements rate limiting for Telegram messages/callbacks.
+    Uses a sliding window algorithm to track request counts per user.
+    """
+
+    def __init__(
+        self,
+        messages_per_minute: int = 30,
+        callbacks_per_minute: int = 60,
+        admin_ids: Set[int] = None,
+        enabled: bool = True,
+    ):
+        self.enabled = enabled
+        self.messages_limit = messages_per_minute
+        self.callbacks_limit = callbacks_per_minute
+        self.admin_ids = admin_ids or set()
+        self._window_size = 60  # 1 minute
+
+        # Store timestamps per user
+        self._message_timestamps: Dict[int, list] = defaultdict(list)
+        self._callback_timestamps: Dict[int, list] = defaultdict(list)
+        self._cooldown_until: Dict[int, float] = {}
+
+        logging.info(
+            f"TelegramRateLimitMiddleware: messages={messages_per_minute}/min, "
+            f"callbacks={callbacks_per_minute}/min, enabled={enabled}"
+        )
+
+    def _cleanup_timestamps(self, timestamps: list, current_time: float) -> list:
+        cutoff = current_time - self._window_size
+        return [ts for ts in timestamps if ts > cutoff]
+
+    def _is_rate_limited(self, user_id: int, timestamps_dict: Dict, limit: int, now: float) -> bool:
+        timestamps_dict[user_id] = self._cleanup_timestamps(timestamps_dict[user_id], now)
+        if len(timestamps_dict[user_id]) >= limit:
+            return True
+        timestamps_dict[user_id].append(now)
+        return False
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any],
+    ) -> Any:
+        if not self.enabled:
+            return await handler(event, data)
+
+        user_id = None
+        if isinstance(event, Message) and event.from_user:
+            user_id = event.from_user.id
+        elif isinstance(event, CallbackQuery) and event.from_user:
+            user_id = event.from_user.id
+
+        if not user_id or user_id in self.admin_ids:
+            return await handler(event, data)
+
+        now = time.time()
+
+        # Check cooldown
+        if now < self._cooldown_until.get(user_id, 0):
+            if isinstance(event, CallbackQuery):
+                try:
+                    await event.answer("Подождите немного...", show_alert=False)
+                except Exception:
+                    pass
+            return None
+
+        # Check rate limit
+        is_limited = False
+        if isinstance(event, Message):
+            is_limited = self._is_rate_limited(user_id, self._message_timestamps, self.messages_limit, now)
+        elif isinstance(event, CallbackQuery):
+            is_limited = self._is_rate_limited(user_id, self._callback_timestamps, self.callbacks_limit, now)
+
+        if is_limited:
+            logging.warning(f"Rate limit: user {user_id}")
+            self._cooldown_until[user_id] = now + 30
+
+            if isinstance(event, Message):
+                try:
+                    await event.answer("⚠️ Слишком много сообщений. Подождите 30 секунд.")
+                except Exception:
+                    pass
+            elif isinstance(event, CallbackQuery):
+                try:
+                    await event.answer("Подождите 30 секунд", show_alert=True)
+                except Exception:
+                    pass
+            return None
+
+        return await handler(event, data)

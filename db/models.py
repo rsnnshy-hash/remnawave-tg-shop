@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Float, ForeignKey, UniqueConstraint, Text, BigInteger
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Float, ForeignKey, UniqueConstraint, Text, BigInteger, Index
 from sqlalchemy.orm import relationship, DeclarativeBase
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.sql import func
@@ -85,6 +85,13 @@ class Subscription(Base):
 
     user = relationship("User", back_populates="subscriptions")
 
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index('ix_subscriptions_user_active', 'user_id', 'is_active'),
+        Index('ix_subscriptions_expiry_active', 'end_date', 'is_active'),
+        Index('ix_subscriptions_auto_renew', 'end_date', 'auto_renew_enabled', 'is_active'),
+    )
+
     def __repr__(self):
         return f"<Subscription(id={self.subscription_id}, user_id={self.user_id}, panel_uuid='{self.panel_user_uuid}', ends='{self.end_date}')>"
 
@@ -120,6 +127,13 @@ class Payment(Base):
     user = relationship("User", back_populates="payments")
     promo_code_used = relationship("PromoCode",
                                    back_populates="payments_where_used")
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index('ix_payments_user_status', 'user_id', 'status'),
+        Index('ix_payments_created_at', 'created_at'),
+        Index('ix_payments_provider_status', 'provider', 'status'),
+    )
 
 
 class UserBilling(Base):
@@ -190,9 +204,11 @@ class PromoCodeActivation(Base):
     user = relationship("User", back_populates="promo_code_activations")
     payment = relationship("Payment")
 
-    __table_args__ = (UniqueConstraint('promo_code_id',
-                                       'user_id',
-                                       name='uq_promo_user_activation'), )
+    __table_args__ = (
+        UniqueConstraint('promo_code_id', 'user_id', name='uq_promo_user_activation'),
+        Index('ix_promo_activations_user', 'user_id'),
+        Index('ix_promo_activations_promo', 'promo_code_id'),
+    )
 
 
 class MessageLog(Base):
@@ -223,6 +239,12 @@ class MessageLog(Base):
     target_user = relationship("User",
                                foreign_keys=[target_user_id],
                                back_populates="message_logs_targeted")
+
+    # Composite indexes for log queries
+    __table_args__ = (
+        Index('ix_message_logs_event_time', 'event_type', 'timestamp'),
+        Index('ix_message_logs_admin_time', 'is_admin_event', 'timestamp'),
+    )
 
 
 class PanelSyncStatus(Base):

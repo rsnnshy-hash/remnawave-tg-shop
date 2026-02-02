@@ -14,6 +14,7 @@ from bot.middlewares.ban_check_middleware import BanCheckMiddleware
 from bot.middlewares.action_logger_middleware import ActionLoggerMiddleware
 from bot.middlewares.profile_sync import ProfileSyncMiddleware
 from bot.middlewares.channel_subscription import ChannelSubscriptionMiddleware
+from bot.middlewares.rate_limit import TelegramRateLimitMiddleware
 
 
 def build_dispatcher(settings: Settings, async_session_factory: sessionmaker) -> tuple[Dispatcher, Bot, Dict]:
@@ -34,6 +35,18 @@ def build_dispatcher(settings: Settings, async_session_factory: sessionmaker) ->
     dp.update.outer_middleware(BanCheckMiddleware(settings=settings, i18n_instance=i18n_instance))
     dp.update.outer_middleware(ChannelSubscriptionMiddleware(settings=settings, i18n_instance=i18n_instance))
     dp.update.outer_middleware(ActionLoggerMiddleware(settings=settings))
+
+    # Rate limiting middleware (protects against spam/flood)
+    if settings.RATE_LIMIT_ENABLED:
+        rate_limit_mw = TelegramRateLimitMiddleware(
+            messages_per_minute=settings.RATE_LIMIT_MESSAGES_PER_MINUTE,
+            callbacks_per_minute=settings.RATE_LIMIT_CALLBACKS_PER_MINUTE,
+            admin_ids=set(settings.ADMIN_IDS),
+            enabled=True,
+        )
+        dp.message.middleware(rate_limit_mw)
+        dp.callback_query.middleware(rate_limit_mw)
+        logging.info("Rate limiting middleware enabled")
 
     return dp, bot, {"i18n_instance": i18n_instance}
 

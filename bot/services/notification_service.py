@@ -375,12 +375,176 @@ class NotificationService:
         profile_keyboard = self._build_profile_keyboard(_, user_id)
         await self._send_to_log_channel(message, reply_markup=profile_keyboard)
     
-    async def send_custom_notification(self, message: str, to_admins: bool = False, 
+    async def send_custom_notification(self, message: str, to_admins: bool = False,
                                      to_log_channel: bool = True, thread_id: Optional[int] = None):
         """Send custom notification message"""
         if to_log_channel:
             await self._send_to_log_channel(message, thread_id)
         if to_admins:
             await self._send_to_admins(message)
+
+    async def notify_critical_error(
+        self,
+        error_type: str,
+        error_message: str,
+        context: Optional[str] = None,
+        user_id: Optional[int] = None,
+    ):
+        """
+        Send notification about critical error to admins.
+
+        Args:
+            error_type: Type of error (e.g., "payment_failed", "panel_api_error")
+            error_message: Error message/description
+            context: Additional context (e.g., function name, request details)
+            user_id: Affected user ID if applicable
+        """
+        if not getattr(self.settings, 'NOTIFY_ON_ERROR', True):
+            return
+
+        admin_lang = self.settings.DEFAULT_LANGUAGE
+        _ = lambda k, **kw: self.i18n.gettext(admin_lang, k, **kw) if self.i18n else k
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Build error message
+        parts = [
+            f"<b>Error Type:</b> {hd.quote(error_type)}",
+            f"<b>Message:</b> {hd.quote(error_message[:500])}",
+        ]
+
+        if context:
+            parts.append(f"<b>Context:</b> {hd.quote(context[:200])}")
+
+        if user_id:
+            parts.append(f"<b>User ID:</b> {user_id}")
+
+        parts.append(f"<b>Time:</b> {timestamp}")
+
+        message = _("log_critical_error", error_details="\n".join(parts))
+
+        # Fallback if translation key doesn't exist
+        if message == "log_critical_error":
+            message = f"🚨 <b>Critical Error</b>\n\n" + "\n".join(parts)
+
+        # Send to log channel and admins
+        await self._send_to_log_channel(message)
+        await self._send_to_admins(message)
+
+    async def notify_payment_failed(
+        self,
+        user_id: int,
+        amount: float,
+        currency: str,
+        payment_provider: str,
+        error_reason: str,
+        username: Optional[str] = None,
+    ):
+        """Send notification about failed payment attempt."""
+        if not getattr(self.settings, 'LOG_PAYMENTS', True):
+            return
+
+        admin_lang = self.settings.DEFAULT_LANGUAGE
+        _ = lambda k, **kw: self.i18n.gettext(admin_lang, k, **kw) if self.i18n else k
+
+        user_display = self._format_user_display(user_id=user_id, username=username)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        message = _(
+            "log_payment_failed",
+            user_display=user_display,
+            amount=amount,
+            currency=currency,
+            payment_provider=payment_provider,
+            error_reason=hd.quote(error_reason[:200]),
+            timestamp=timestamp,
+        )
+
+        # Fallback if translation key doesn't exist
+        if message == "log_payment_failed":
+            message = (
+                f"❌ <b>Payment Failed</b>\n\n"
+                f"<b>User:</b> {user_display}\n"
+                f"<b>Amount:</b> {amount} {currency}\n"
+                f"<b>Provider:</b> {payment_provider}\n"
+                f"<b>Reason:</b> {hd.quote(error_reason[:200])}\n"
+                f"<b>Time:</b> {timestamp}"
+            )
+
+        profile_keyboard = self._build_profile_keyboard(_, user_id)
+        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+
+    async def notify_subscription_expiring(
+        self,
+        user_id: int,
+        days_remaining: int,
+        subscription_name: Optional[str] = None,
+        username: Optional[str] = None,
+    ):
+        """Send notification about subscription expiring soon (for admin awareness)."""
+        admin_lang = self.settings.DEFAULT_LANGUAGE
+        _ = lambda k, **kw: self.i18n.gettext(admin_lang, k, **kw) if self.i18n else k
+
+        user_display = self._format_user_display(user_id=user_id, username=username)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        sub_info = f" ({subscription_name})" if subscription_name else ""
+
+        message = _(
+            "log_subscription_expiring",
+            user_display=user_display,
+            days_remaining=days_remaining,
+            sub_info=sub_info,
+            timestamp=timestamp,
+        )
+
+        # Fallback if translation key doesn't exist
+        if message == "log_subscription_expiring":
+            message = (
+                f"⏰ <b>Subscription Expiring</b>\n\n"
+                f"<b>User:</b> {user_display}\n"
+                f"<b>Days remaining:</b> {days_remaining}{sub_info}\n"
+                f"<b>Time:</b> {timestamp}"
+            )
+
+        await self._send_to_log_channel(message)
+
+    async def notify_user_banned(
+        self,
+        admin_id: int,
+        target_user_id: int,
+        reason: Optional[str] = None,
+        admin_username: Optional[str] = None,
+        target_username: Optional[str] = None,
+    ):
+        """Send notification when admin bans a user."""
+        admin_lang = self.settings.DEFAULT_LANGUAGE
+        _ = lambda k, **kw: self.i18n.gettext(admin_lang, k, **kw) if self.i18n else k
+
+        admin_display = self._format_user_display(user_id=admin_id, username=admin_username)
+        target_display = self._format_user_display(user_id=target_user_id, username=target_username)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        reason_text = f"\n<b>Reason:</b> {hd.quote(reason)}" if reason else ""
+
+        message = _(
+            "log_user_banned",
+            admin_display=admin_display,
+            target_display=target_display,
+            reason_text=reason_text,
+            timestamp=timestamp,
+        )
+
+        # Fallback if translation key doesn't exist
+        if message == "log_user_banned":
+            message = (
+                f"🚫 <b>User Banned</b>\n\n"
+                f"<b>Admin:</b> {admin_display}\n"
+                f"<b>Banned user:</b> {target_display}{reason_text}\n"
+                f"<b>Time:</b> {timestamp}"
+            )
+
+        await self._send_to_log_channel(message)
+
 
 # Removed legacy helper functions that duplicated NotificationService API

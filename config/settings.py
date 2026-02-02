@@ -221,6 +221,58 @@ class Settings(BaseSettings):
         description="Days before expiry to send renewal reminder"
     )
 
+    # Sentry error monitoring
+    SENTRY_DSN: Optional[str] = Field(
+        default=None,
+        description="Sentry DSN for error tracking (leave empty to disable)"
+    )
+    SENTRY_ENVIRONMENT: str = Field(
+        default="production",
+        description="Environment name for Sentry (e.g., production, staging)"
+    )
+
+    # Redis caching
+    REDIS_URL: Optional[str] = Field(
+        default=None,
+        description="Redis URL for caching (e.g., redis://localhost:6379/0)"
+    )
+    CACHE_TTL_SECONDS: int = Field(
+        default=300,
+        description="Default cache TTL in seconds"
+    )
+
+    # Rate limiting
+    RATE_LIMIT_ENABLED: bool = Field(
+        default=True,
+        description="Enable rate limiting for spam protection"
+    )
+    RATE_LIMIT_MESSAGES_PER_MINUTE: int = Field(
+        default=30,
+        description="Maximum messages per minute per user"
+    )
+    RATE_LIMIT_CALLBACKS_PER_MINUTE: int = Field(
+        default=60,
+        description="Maximum callback queries per minute per user"
+    )
+
+    # Admin notifications
+    ADMIN_NOTIFICATIONS_ENABLED: bool = Field(
+        default=True,
+        description="Enable admin notifications for important events"
+    )
+    NOTIFY_ON_PAYMENT: bool = Field(
+        default=True,
+        description="Notify admins when payment is received"
+    )
+    NOTIFY_ON_ERROR: bool = Field(
+        default=True,
+        description="Notify admins on critical errors"
+    )
+    NOTIFY_ON_NEW_USER: bool = Field(
+        default=False,
+        description="Notify admins when new user joins"
+    )
+
     @computed_field
     @property
     def DATABASE_URL(self) -> str:
