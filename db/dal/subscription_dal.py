@@ -44,7 +44,7 @@ async def get_active_subscriptions_for_user(session: AsyncSession, user_id: int)
 
 
 async def get_all_subscriptions_for_user(session: AsyncSession, user_id: int) -> List[Subscription]:
-    """Get all subscriptions for a user (including expired/inactive)."""
+    """Get ALL subscriptions for a user (including expired/inactive)."""
     stmt = select(Subscription).where(
         Subscription.user_id == user_id
     ).order_by(Subscription.end_date.desc())
@@ -62,6 +62,16 @@ async def update_subscription(
         await session.flush()
         await session.refresh(sub)
     return sub
+
+
+async def delete_subscription(session: AsyncSession, subscription_id: int) -> bool:
+    """Delete a subscription by ID."""
+    sub = await session.get(Subscription, subscription_id)
+    if sub:
+        await session.delete(sub)
+        await session.flush()
+        return True
+    return False
 
 
 async def set_auto_renew(session: AsyncSession, subscription_id: int, enabled: bool) -> Optional[Subscription]:

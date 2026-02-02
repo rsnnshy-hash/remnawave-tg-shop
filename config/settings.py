@@ -139,8 +139,16 @@ class Settings(BaseSettings):
 
     # Referral program configuration
     REFERRAL_ONE_BONUS_PER_REFEREE: bool = Field(
-        default=True,
+        default=False,
         description="When true, referral bonuses (for inviter and referee) are applied only once per invited user - on their first successful payment."
+    )
+    REFERRAL_FIRST_PURCHASE_BONUS: int = Field(
+        default=15,
+        description="One-time bonus days for inviter on referee's first purchase"
+    )
+    REFERRAL_FIRST_PURCHASE_BONUS_REFEREE: int = Field(
+        default=7,
+        description="One-time bonus days for referee on their first purchase"
     )
     LEGACY_REFS: bool = Field(
         default=True,
@@ -190,6 +198,28 @@ class Settings(BaseSettings):
     INLINE_USER_STATS_THUMBNAIL_URL: str = Field(default="https://cdn-icons-png.flaticon.com/512/681/681494.png")
     INLINE_FINANCIAL_STATS_THUMBNAIL_URL: str = Field(default="https://cdn-icons-png.flaticon.com/512/2769/2769339.png")
     INLINE_SYSTEM_STATS_THUMBNAIL_URL: str = Field(default="https://cdn-icons-png.flaticon.com/512/2920/2920277.png")
+
+    # Periodic notifications settings
+    PERIODIC_REFERRAL_NOTIFICATIONS_ENABLED: bool = Field(
+        default=False,
+        description="Enable periodic referral program reminders"
+    )
+    PERIODIC_RENEWAL_NOTIFICATIONS_ENABLED: bool = Field(
+        default=False,
+        description="Enable periodic renewal reminders for users without auto-renewal"
+    )
+    PERIODIC_NOTIFICATIONS_INTERVAL_HOURS: int = Field(
+        default=6,
+        description="How often to check for users to notify (in hours)"
+    )
+    REFERRAL_REMINDER_DAYS_BETWEEN: int = Field(
+        default=14,
+        description="Days between referral reminder notifications"
+    )
+    RENEWAL_REMINDER_DAYS_BEFORE: int = Field(
+        default=7,
+        description="Days before expiry to send renewal reminder"
+    )
 
     @computed_field
     @property
@@ -586,6 +616,13 @@ def get_settings() -> Settings:
                     logging.warning(
                         "CRITICAL: SeverPay is enabled but MID or TOKEN is missing. SeverPay payments will not work."
                     )
+
+            # Security check for panel webhook
+            if not _settings_instance.PANEL_WEBHOOK_SECRET:
+                logging.warning(
+                    "SECURITY WARNING: PANEL_WEBHOOK_SECRET is not set. "
+                    "Panel webhooks will be rejected. Please set this value in your .env file."
+                )
 
         except ValidationError as e:
             logging.critical(

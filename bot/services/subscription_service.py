@@ -736,10 +736,15 @@ class SubscriptionService:
                 session, user_id
             )
 
+        # Get panel username for subscription name
+        panel_user_data = await self.panel_service.get_user_by_uuid(panel_user_uuid)
+        panel_username = panel_user_data.get("username") if panel_user_data else f"tg_{user_id}"
+
         sub_payload = {
             "user_id": user_id,
             "panel_user_uuid": panel_user_uuid,
             "panel_subscription_uuid": panel_sub_link_id,
+            "subscription_name": panel_username,
             "start_date": start_date,
             "end_date": final_end_date,
             "duration_months": months_int,
@@ -1300,56 +1305,36 @@ class SubscriptionService:
 
         subscriptions = await subscription_dal.get_all_subscriptions_for_user(session, user_id)
         results = []
-        now = datetime.now(timezone.utc)
-
+        
         for sub in subscriptions:
             panel_user_data = await self.panel_service.get_user_by_uuid(sub.panel_user_uuid)
-
-            # Determine if subscription is expired
-            end_date = sub.end_date
-            is_expired = False
-            if end_date:
-                is_expired = end_date <= now
-
-            if panel_user_data:
-                panel_end_date = (
-                    datetime.fromisoformat(panel_user_data["expireAt"].replace("Z", "+00:00"))
-                    if panel_user_data.get("expireAt")
-                    else None
-                )
-                if panel_end_date:
-                    end_date = panel_end_date
-                    is_expired = panel_end_date <= now
-
-                config_link_raw = panel_user_data.get("subscriptionUrl")
-                display_link, connect_button_url = await prepare_config_links(self.settings, config_link_raw)
-                panel_status = panel_user_data.get("status", "UNKNOWN").upper()
-                traffic_limit = panel_user_data.get("trafficLimitBytes")
-                traffic_used = (panel_user_data.get("userTraffic") or {}).get("usedTrafficBytes")
-                # Use username from panel (e.g., Kazbek, Mama_kazbeka) instead of local DB
-                panel_username = panel_user_data.get("username") or sub.subscription_name or f"tg_{user_id}"
-            else:
-                # Panel user not found, use local data
-                display_link = None
-                connect_button_url = None
-                panel_status = sub.status_from_panel or "UNKNOWN"
-                traffic_limit = sub.traffic_limit_bytes
-                traffic_used = sub.traffic_used_bytes
-                panel_username = sub.subscription_name or f"tg_{user_id}"
+            if not panel_user_data:
+                continue
+                
+            panel_end_date = (
+                datetime.fromisoformat(panel_user_data["expireAt"].replace("Z", "+00:00"))
+                if panel_user_data.get("expireAt")
+                else None
+            )
+            
+            config_link_raw = panel_user_data.get("subscriptionUrl")
+            display_link, connect_button_url = await prepare_config_links(self.settings, config_link_raw)
+            
+            # Use username from panel (e.g., Kazbek, Mama_kazbeka) instead of local DB
+            panel_username = panel_user_data.get("username") or sub.subscription_name or f"tg_{user_id}"
 
             results.append({
                 "subscription_id": sub.subscription_id,
                 "subscription_name": panel_username,
-                "user_id": panel_user_data.get("uuid") if panel_user_data else sub.panel_user_uuid,
+                "user_id": panel_user_data.get("uuid"),
                 "panel_user_uuid": sub.panel_user_uuid,
-                "end_date": end_date,
-                "status_from_panel": panel_status,
+                "end_date": panel_end_date or sub.end_date,
+                "status_from_panel": panel_user_data.get("status", "UNKNOWN").upper(),
                 "config_link": display_link,
                 "connect_button_url": connect_button_url,
-                "traffic_limit_bytes": traffic_limit,
-                "traffic_used_bytes": traffic_used,
-                "is_active": sub.is_active and not is_expired,
-                "is_expired": is_expired,
+                "traffic_limit_bytes": panel_user_data.get("trafficLimitBytes"),
+                "traffic_used_bytes": (panel_user_data.get("userTraffic") or {}).get("usedTrafficBytes"),
+                "is_active": sub.is_active,
             })
 
         return results

@@ -136,16 +136,23 @@ class PanelWebhookService:
             )
 
     async def handle_webhook(self, raw_body: bytes, signature_header: Optional[str]) -> web.Response:
-        if self.settings.PANEL_WEBHOOK_SECRET:
-            if not signature_header:
-                return web.Response(status=403, text="no_signature")
-            expected_sig = hmac.new(
-                self.settings.PANEL_WEBHOOK_SECRET.encode(),
-                raw_body,
-                hashlib.sha256,
-            ).hexdigest()
-            if not hmac.compare_digest(expected_sig, signature_header):
-                return web.Response(status=403, text="invalid_signature")
+        # Security: PANEL_WEBHOOK_SECRET is now required
+        if not self.settings.PANEL_WEBHOOK_SECRET:
+            logging.error("Panel webhook rejected: PANEL_WEBHOOK_SECRET is not configured")
+            return web.Response(status=503, text="webhook_not_configured")
+
+        if not signature_header:
+            logging.warning("Panel webhook rejected: no signature header provided")
+            return web.Response(status=403, text="no_signature")
+
+        expected_sig = hmac.new(
+            self.settings.PANEL_WEBHOOK_SECRET.encode(),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected_sig, signature_header):
+            logging.warning("Panel webhook rejected: invalid signature")
+            return web.Response(status=403, text="invalid_signature")
 
         try:
             payload = json.loads(raw_body.decode())

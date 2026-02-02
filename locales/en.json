@@ -9,6 +9,7 @@
   "menu_activate_trial_button": "🆓 Free Trial",
   "menu_subscribe_inline": "🚀 Purchase",
   "menu_my_subscription_inline": "🔐 My Subscription",
+  "menu_my_devices_button": "My Devices",
   "no_subscription_options_available": "Subscription issuance is not configured by the bot administrator",
   "menu_referral_inline": "🎁 Referrals",
   "referral_no_bonuses_configured": "Sorry, the referral program is currently disabled",
@@ -496,5 +497,12 @@
   "no_active_subscriptions": "You don't have any active subscriptions.",
   "referral_bonus_received": "🎁 <b>Welcome!</b>\n\nYou registered via referral link and receive <b>{days} days</b> of free VPN!",
   "referral_friend_joined": "🎉 <b>Great news!</b>\n\nYour friend <b>{friend_name}</b> joined using your link!\n\n💰 You'll get <b>{bonus_days} days</b> bonus when they pay for any subscription.",
-  "subscription_expired_label": "expired"
+  "periodic_referral_reminder": "🎁 <b>Invite friends — get bonuses!</b>\n\n🎉 <b>Referral program bonuses:</b>\n➜ Friend gets <b>+7 days</b> free upon registration\n➜ You get <b>+15 days</b> for friend's first purchase\n➜ You get <b>+3-30 days</b> for each subsequent purchase\n\n🔗 <b>Your referral link:</b>\n<code>{referral_link}</code>\n\nShare with friends and earn bonuses! 🚀",
+  "renewal_reminder_7_days": "📅 <b>Subscription Reminder</b>\n\nYour subscription expires in <b>{days_left} days</b> ({end_date}).\n\n💡 Renew early to keep your VPN access!",
+  "renewal_reminder_3_days": "⚠️ <b>Subscription ending soon!</b>\n\nOnly <b>{days_left} days</b> left ({end_date}).\n\n⏰ Don't forget to renew!",
+  "renewal_reminder_tomorrow": "🔔 <b>Subscription ends tomorrow!</b>\n\nExpiry date: <b>{end_date}</b>\n\n⚡ Renew now to stay connected!",
+  "renewal_reminder_today": "🚨 <b>Subscription ends today!</b>\n\nExpiry date: <b>{end_date}</b>\n\n‼️ Renew immediately to avoid losing access!",
+  "delete_subscription_button": "Delete",
+  "delete_subscription_confirm": "🗑 <b>Delete subscription?</b>\n\nAre you sure you want to delete <b>{sub_name}</b>?\n\n⚠️ This action cannot be undone.",
+  "subscription_deleted_success": "✅ Subscription deleted"
 }

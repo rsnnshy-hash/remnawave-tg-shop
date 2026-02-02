@@ -291,10 +291,17 @@ async def view_subscription_details_callback(
     traffic_limit = panel_user_data.get("trafficLimitBytes")
     traffic_used = (panel_user_data.get("userTraffic") or {}).get("usedTrafficBytes")
 
+    # Use username from panel (like list view does)
+    panel_username = panel_user_data.get("username") or sub.subscription_name or f"tg_{callback.from_user.id}"
+
+    # Check if subscription is expired
+    panel_status = panel_user_data.get("status", "UNKNOWN").upper()
+    is_expired = days_left <= 0 or panel_status == "EXPIRED"
+
     text = get_text(
         "subscription_details_title",
-        sub_name=sub.subscription_name or f"tg_{callback.from_user.id}",
-        status=panel_user_data.get("status", "UNKNOWN").upper(),
+        sub_name=panel_username,
+        status=panel_status,
         end_date=end_date.strftime("%Y-%m-%d") if end_date else "N/A",
         days_left=max(0, days_left),
         config_link=display_link or get_text("config_link_not_available"),
@@ -309,6 +316,7 @@ async def view_subscription_details_callback(
         current_lang,
         i18n,
         settings,
+        is_expired=is_expired,
     )
 
     try:
@@ -320,6 +328,104 @@ async def view_subscription_details_callback(
         await callback.answer()
     except Exception:
         pass
+
+
+@router.callback_query(F.data.startswith("delete_sub:"))
+async def delete_subscription_confirm_callback(
+    callback: types.CallbackQuery,
+    i18n_data: dict,
+    settings: Settings,
+    session: AsyncSession,
+    panel_service: PanelApiService,
+):
+    """Show confirmation dialog for deleting a subscription."""
+    current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
+    i18n: JsonI18n = i18n_data.get("i18n_instance")
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+
+    try:
+        sub_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+
+    # Get subscription from DB
+    sub = await subscription_dal.get_subscription_by_id(session, sub_id)
+    if not sub or sub.user_id != callback.from_user.id:
+        await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+
+    # Get name from panel
+    panel_user_data = await panel_service.get_user_by_uuid(sub.panel_user_uuid)
+    sub_name = (panel_user_data.get("username") if panel_user_data else None) or sub.subscription_name or f"Подписка #{sub_id}"
+
+    # Show confirmation
+    text = get_text("delete_subscription_confirm", sub_name=sub_name)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ " + get_text("yes_button"), callback_data=f"confirm_delete_sub:{sub_id}"),
+            InlineKeyboardButton(text="❌ " + get_text("no_button"), callback_data="main_action:back_to_main"),
+        ]
+    ])
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("confirm_delete_sub:"))
+async def confirm_delete_subscription_callback(
+    callback: types.CallbackQuery,
+    i18n_data: dict,
+    settings: Settings,
+    session: AsyncSession,
+    panel_service: PanelApiService,
+):
+    """Actually delete the subscription after confirmation."""
+    current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
+    i18n: JsonI18n = i18n_data.get("i18n_instance")
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+
+    try:
+        sub_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+
+    # Get subscription from DB
+    sub = await subscription_dal.get_subscription_by_id(session, sub_id)
+    if not sub or sub.user_id != callback.from_user.id:
+        await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+
+    try:
+        # Delete from panel if possible
+        if sub.panel_user_uuid:
+            try:
+                await panel_service.delete_user_from_panel(sub.panel_user_uuid)
+                logging.info(f"Deleted panel user {sub.panel_user_uuid} for subscription {sub_id}")
+            except Exception as e:
+                logging.warning(f"Failed to delete panel user {sub.panel_user_uuid}: {e}")
+
+        # Delete from local DB
+        await subscription_dal.delete_subscription(session, sub_id)
+        await session.commit()
+
+        logging.info(f"User {callback.from_user.id} deleted subscription {sub_id}")
+        await callback.answer(get_text("subscription_deleted_success"), show_alert=True)
+
+    except Exception as e:
+        logging.error(f"Error deleting subscription {sub_id}: {e}")
+        await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+
+    # Return to main menu
+    from bot.handlers.user.start import send_main_menu
+    await send_main_menu(callback, settings, i18n_data, session)
 
 
 async def my_subscription_command_handler(

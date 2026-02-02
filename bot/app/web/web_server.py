@@ -6,6 +6,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from sqlalchemy.orm import sessionmaker
 
 from config.settings import Settings
+from bot.middlewares.rate_limit import rate_limit_middleware
 
 
 async def build_and_start_web_app(
@@ -14,7 +15,7 @@ async def build_and_start_web_app(
     settings: Settings,
     async_session_factory: sessionmaker,
 ):
-    app = web.Application()
+    app = web.Application(middlewares=[rate_limit_middleware])
     app["bot"] = bot
     app["dp"] = dp
     app["settings"] = settings

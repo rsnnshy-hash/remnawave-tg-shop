@@ -29,6 +29,9 @@ class User(Base):
     channel_subscription_checked_at = Column(DateTime(timezone=True),
                                              nullable=True)
     channel_subscription_verified_for = Column(BigInteger, nullable=True)
+    # Periodic notification tracking
+    last_referral_reminder_sent = Column(DateTime(timezone=True), nullable=True)
+    last_renewal_reminder_sent = Column(DateTime(timezone=True), nullable=True)
 
     referrer = relationship("User", remote_side=[user_id], backref="referrals")
     subscriptions = relationship("Subscription",
@@ -265,3 +268,20 @@ class AdAttribution(Base):
 
     user = relationship("User")
     campaign = relationship("AdCampaign", back_populates="attributions")
+
+
+class ProcessedWebhook(Base):
+    """
+    Tracks processed webhooks to prevent duplicate processing (idempotency).
+    """
+    __tablename__ = "processed_webhooks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    provider = Column(String, nullable=False, index=True)  # yookassa, freekassa, etc.
+    provider_event_id = Column(String, nullable=False)  # payment_id or webhook event id
+    event_type = Column(String, nullable=True)  # payment.succeeded, etc.
+    processed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('provider', 'provider_event_id', name='uq_provider_event'),
+    )

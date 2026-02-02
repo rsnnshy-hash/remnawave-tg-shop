@@ -12,7 +12,8 @@ from sqlalchemy.orm import sessionmaker
 from yookassa.domain.notification import WebhookNotification
 from yookassa.domain.models.amount import Amount as YooKassaAmount
 
-from db.dal import payment_dal, user_dal, user_billing_dal
+from db.dal import payment_dal, user_dal, user_billing_dal, webhook_dal
+from bot.utils.ip_validator import validate_yookassa_request
 
 from bot.services.subscription_service import SubscriptionService
 from bot.services.referral_service import ReferralService
@@ -446,6 +447,11 @@ async def process_cancelled_payment(session: AsyncSession, bot: Bot,
 
 
 async def yookassa_webhook_route(request: web.Request):
+    # Security: Validate request comes from YooKassa IP addresses
+    is_valid_ip, client_ip = validate_yookassa_request(request)
+    if not is_valid_ip:
+        logging.warning(f"YooKassa webhook: Blocked request from unauthorized IP: {client_ip}")
+        return web.Response(status=403, text="forbidden_ip")
 
     try:
         bot: Bot = request.app['bot']
@@ -540,6 +546,16 @@ async def yookassa_webhook_route(request: web.Request):
         async with payment_processing_lock:
             async with async_session_factory() as session:
                 try:
+                    # Idempotency check: prevent duplicate processing
+                    yk_event_id = f"{payment_dict_for_processing.get('id')}:{notification_object.event}"
+                    is_new = await webhook_dal.mark_webhook_processed(
+                        session, "yookassa", yk_event_id, notification_object.event
+                    )
+                    if not is_new:
+                        logging.info(f"YooKassa webhook already processed: {yk_event_id}")
+                        await session.commit()
+                        return web.Response(status=200, text="ok_already_processed")
+
                     if notification_object.event == YOOKASSA_EVENT_PAYMENT_SUCCEEDED:
                         if payment_dict_for_processing.get(
                                 "paid") and payment_dict_for_processing.get(

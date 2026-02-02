@@ -38,6 +38,7 @@ from bot.services.crypto_pay_service import CryptoPayService, cryptopay_webhook_
 from bot.handlers.user import payment as user_payment_webhook_module
 from bot.handlers.admin.sync_admin import perform_sync
 from bot.utils.message_queue import init_queue_manager
+from bot.services.periodic_notifications_service import PeriodicNotificationsService
 
 
 async def register_all_routers(dp: Dispatcher, settings: Settings):
@@ -169,6 +170,21 @@ async def on_startup_configured(dispatcher: Dispatcher):
     except Exception as e:
         logging.error(f"STARTUP: Failed to run automatic sync: {e}", exc_info=True)
 
+    # Initialize and start periodic notifications service
+    if settings.PERIODIC_REFERRAL_NOTIFICATIONS_ENABLED or settings.PERIODIC_RENEWAL_NOTIFICATIONS_ENABLED:
+        try:
+            periodic_notifications_service = PeriodicNotificationsService(
+                bot=bot,
+                settings=settings,
+                i18n=i18n_instance,
+                async_session_factory=async_session_factory,
+            )
+            periodic_notifications_service.start()
+            dispatcher["periodic_notifications_service"] = periodic_notifications_service
+            logging.info("STARTUP: Periodic notifications service started")
+        except Exception as e:
+            logging.error(f"STARTUP: Failed to start periodic notifications service: {e}", exc_info=True)
+
     logging.info("STARTUP: Bot on_startup_configured completed.")
 
 
@@ -194,6 +210,15 @@ async def on_shutdown_configured(dispatcher: Dispatcher):
                     logging.info(f"{key} session closed on shutdown.")
                 except Exception as e:
                     logging.warning(f"Failed to close session for {key}: {e}")
+
+    # Stop periodic notifications service first
+    periodic_service = dispatcher.get("periodic_notifications_service")
+    if periodic_service:
+        try:
+            periodic_service.stop()
+            logging.info("SHUTDOWN: Periodic notifications service stopped")
+        except Exception as e:
+            logging.warning(f"SHUTDOWN: Failed to stop periodic notifications service: {e}")
 
     for service_key in (
         "panel_service",

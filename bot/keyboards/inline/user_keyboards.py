@@ -606,33 +606,22 @@ def get_my_subscriptions_keyboard(
     """Keyboard for viewing list of user's subscriptions."""
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
-
+    
     for sub in subscriptions:
         sub_name = sub.get("subscription_name", "Подписка")
         end_date = sub.get("end_date")
         end_date_str = end_date.strftime("%d.%m.%Y") if end_date else "N/A"
         sub_id = sub.get("subscription_id")
-        is_expired = sub.get("is_expired", False)
-        is_active = sub.get("is_active", False)
-
-        if is_expired:
-            status = "⛔"
-            expired_label = _("subscription_expired_label")
-            button_text = f"{status} {sub_name} | {expired_label}"
-        elif is_active:
-            status = "✅"
-            button_text = f"{status} {sub_name} | до {end_date_str}"
-        else:
-            status = "❌"
-            button_text = f"{status} {sub_name} | до {end_date_str}"
-
+        status = "✅" if sub.get("is_active") else "❌"
+        
+        button_text = f"{status} {sub_name} | до {end_date_str}"
         builder.row(
             InlineKeyboardButton(
                 text=button_text,
                 callback_data=f"view_sub:{sub_id}"
             )
         )
-
+    
     # Back button
     builder.row(
         InlineKeyboardButton(
@@ -640,7 +629,7 @@ def get_my_subscriptions_keyboard(
             callback_data="main_action:back_to_main"
         )
     )
-
+    
     return builder.as_markup()
 
 
@@ -650,36 +639,56 @@ def get_subscription_details_keyboard(
     connect_button_url: str,
     lang: str,
     i18n_instance,
-    settings: Settings
+    settings: Settings,
+    is_expired: bool = False
 ) -> InlineKeyboardMarkup:
     """Keyboard for single subscription details view."""
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
-    
-    # Connect button
-    if settings.SUBSCRIPTION_MINI_APP_URL:
-        builder.row(
-            InlineKeyboardButton(
-                text=_("connect_button"),
-                web_app=WebAppInfo(url=settings.SUBSCRIPTION_MINI_APP_URL),
+
+    # Connect button (only for active subscriptions)
+    if not is_expired:
+        if settings.SUBSCRIPTION_MINI_APP_URL:
+            builder.row(
+                InlineKeyboardButton(
+                    text=_("connect_button"),
+                    web_app=WebAppInfo(url=settings.SUBSCRIPTION_MINI_APP_URL),
+                )
             )
-        )
-    elif connect_button_url or config_link:
-        builder.row(
-            InlineKeyboardButton(
-                text=_("connect_button"),
-                url=connect_button_url or config_link,
+        elif connect_button_url or config_link:
+            builder.row(
+                InlineKeyboardButton(
+                    text=_("connect_button"),
+                    url=connect_button_url or config_link,
+                )
             )
-        )
-    
-    # Extend this subscription button
+
+    # Extend/Renew this subscription button
     builder.row(
         InlineKeyboardButton(
             text="⏳ " + _("extend_subscription_button"),
             callback_data=f"extend_sub:{subscription_id}"
         )
     )
-    
+
+    # My Devices button (if enabled and not expired)
+    if settings.MY_DEVICES_SECTION_ENABLED and not is_expired:
+        builder.row(
+            InlineKeyboardButton(
+                text="📱 " + _("menu_my_devices_button"),
+                callback_data="main_action:my_devices"
+            )
+        )
+
+    # Delete button for expired subscriptions
+    if is_expired:
+        builder.row(
+            InlineKeyboardButton(
+                text="🗑 " + _("delete_subscription_button"),
+                callback_data=f"delete_sub:{subscription_id}"
+            )
+        )
+
     # Back to main menu
     builder.row(
         InlineKeyboardButton(
@@ -687,5 +696,5 @@ def get_subscription_details_keyboard(
             callback_data="main_action:back_to_main"
         )
     )
-    
+
     return builder.as_markup()
