@@ -191,8 +191,8 @@ class PeriodicNotificationsService:
                 else:  # 7 days
                     message = _("renewal_reminder_7_days", days_left=days_left, end_date=end_date_str)
 
-                from bot.keyboards.inline.user_keyboards import get_subscribe_only_markup
-                keyboard = get_subscribe_only_markup(lang, self.i18n)
+                from bot.keyboards.inline.user_keyboards import get_renew_subscription_keyboard
+                keyboard = get_renew_subscription_keyboard(lang, self.i18n)
 
                 await self.bot.send_message(
                     chat_id=user.user_id,

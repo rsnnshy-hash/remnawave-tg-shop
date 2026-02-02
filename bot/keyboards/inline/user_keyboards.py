@@ -331,6 +331,28 @@ def get_subscribe_only_markup(lang: str, i18n_instance) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def get_renew_subscription_keyboard(lang: str, i18n_instance) -> InlineKeyboardMarkup:
+    """Keyboard with 'Renew subscription' button for expiry notifications."""
+    _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=_(key="renew_subscription_button"),
+        callback_data="main_action:subscribe"
+    )
+    return builder.as_markup()
+
+
+def get_referral_bonus_keyboard(lang: str, i18n_instance) -> InlineKeyboardMarkup:
+    """Keyboard with 'Invite more friends' button for referral bonus notifications."""
+    _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=_(key="referral_invite_more_button"),
+        callback_data="main_action:referral"
+    )
+    return builder.as_markup()
+
+
 def get_user_banned_keyboard(support_link: Optional[str], lang: str,
                              i18n_instance) -> Optional[InlineKeyboardMarkup]:
     if not support_link:
