@@ -34,12 +34,13 @@ class MessageQueue:
         self.delay_between_messages = 1.0 / messages_per_second
         self.total_sent = 0
         self.total_failed = 0
-        
+        self._processing_task: Optional[asyncio.Task] = None
+
     async def add_message(self, message: QueuedMessage) -> None:
         """Add message to queue"""
         self.queue.append(message)
         if not self.is_processing:
-            asyncio.create_task(self._process_queue())
+            self._processing_task = asyncio.create_task(self._process_queue())
     
     async def _process_queue(self) -> None:
         """Process messages from queue with rate limiting"""

@@ -206,7 +206,7 @@ class NotificationService:
             user_id=user_id,
             user_display=user_display,
             referral_text=referral_text,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         )
 
         # Send to log channel
@@ -248,7 +248,7 @@ class NotificationService:
                 currency=currency,
                 traffic_gb=traffic_label,
                 payment_provider=payment_provider,
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             )
         else:
             message = _(
@@ -259,7 +259,7 @@ class NotificationService:
                 currency=currency,
                 months=months,
                 payment_provider=payment_provider,
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             )
         
         # Send to log channel
@@ -285,7 +285,7 @@ class NotificationService:
             user_display=user_display,
             promo_code=promo_code,
             bonus_days=bonus_days,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         )
         
         # Send to log channel
@@ -310,7 +310,7 @@ class NotificationService:
             "log_trial_activation",
             user_display=user_display,
             end_date=end_date.strftime("%Y-%m-%d %H:%M"),
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         )
         
         # Send to log channel

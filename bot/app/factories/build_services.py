@@ -79,8 +79,10 @@ def build_core_services(
         setattr(subscription_service, "yookassa_service", yookassa_service)
         # Allow panel webhook to trigger renewals through subscription service
         setattr(panel_webhook_service, "subscription_service", subscription_service)
-    except Exception:
-        pass
+    except Exception as e_wire:
+        import logging
+        logging.error(f"CRITICAL: Failed to wire inter-service dependencies: {e_wire}. "
+                      f"Auto-renew and panel webhooks may not work!", exc_info=True)
 
     return {
         "panel_service": panel_service,

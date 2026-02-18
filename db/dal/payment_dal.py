@@ -88,6 +88,27 @@ async def get_payment_by_db_id(session: AsyncSession,
     return result.scalar_one_or_none()
 
 
+async def get_payment_by_db_id_for_update(session: AsyncSession,
+                                          payment_db_id: int) -> Optional[Payment]:
+    """Fetch payment by DB id with row-level lock (FOR UPDATE) to prevent race conditions."""
+    stmt = (select(Payment)
+            .where(Payment.payment_id == payment_db_id)
+            .with_for_update()
+            .options(selectinload(Payment.user), selectinload(Payment.promo_code_used)))
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_payment_by_provider_payment_id_for_update(
+        session: AsyncSession, provider_payment_id: str) -> Optional[Payment]:
+    """Fetch payment by provider id with row-level lock (FOR UPDATE)."""
+    stmt = (select(Payment)
+            .where(Payment.provider_payment_id == provider_payment_id)
+            .with_for_update())
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def update_payment_status_by_db_id(
         session: AsyncSession,
         payment_db_id: int,
@@ -177,10 +198,10 @@ async def update_provider_payment_and_status(
 
 async def get_financial_statistics(session: AsyncSession) -> Dict[str, Any]:
     """Get comprehensive financial statistics."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from sqlalchemy import and_, text
-    
-    now = datetime.utcnow()
+
+    now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = today_start - timedelta(days=7)
     month_start = today_start - timedelta(days=30)

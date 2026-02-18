@@ -13,13 +13,22 @@ def init_db_connection(settings: Settings) -> sessionmaker:
     global async_engine
 
     if async_engine is None:
-        logging.info(
-            f"Attempting to create SQLAlchemy engine with URL: {settings.DATABASE_URL}"
-        )
+        # Mask password in log output to prevent credential leakage
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(settings.DATABASE_URL)
+            safe_url = f"{parsed.scheme}://{parsed.username}:***@{parsed.hostname}:{parsed.port}{parsed.path}"
+        except Exception:
+            safe_url = "<masked>"
+        logging.info(f"Creating SQLAlchemy engine with URL: {safe_url}")
+
         async_engine = create_async_engine(
             settings.DATABASE_URL,
             echo=False,
             pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            pool_recycle=1800,
         )
 
     local_async_session_factory = async_sessionmaker(

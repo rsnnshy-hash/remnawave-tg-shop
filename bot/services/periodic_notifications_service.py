@@ -82,21 +82,11 @@ class PeriodicNotificationsService:
 
         logging.info(f"Sending periodic notifications at optimal hour (Moscow: {moscow_hour}:00)")
 
-        # Determine which notification type to send based on day of year
-        # Even days = referral, Odd days = support
-        day_of_year = now.timetuple().tm_yday
-        is_referral_day = (day_of_year % 2 == 0)
-
         async with self.async_session_factory() as session:
-            # Alternate between referral and support notifications
+            # Send referral reminders (once per day)
             if self.settings.PERIODIC_REFERRAL_NOTIFICATIONS_ENABLED:
-                users_for_promo = await self._get_users_for_referral_reminder(session)
-                if is_referral_day:
-                    logging.info("Today is referral day - sending referral reminders")
-                    await self._send_referral_reminders(session, users_for_promo)
-                else:
-                    logging.info("Today is support day - sending support reminders")
-                    await self._send_support_reminders(session, users_for_promo)
+                users_for_referral = await self._get_users_for_referral_reminder(session)
+                await self._send_referral_reminders(session, users_for_referral)
 
             # Send renewal reminders (multiple stages: 7, 3, 1, 0 days before expiry)
             if self.settings.PERIODIC_RENEWAL_NOTIFICATIONS_ENABLED:
@@ -191,8 +181,8 @@ class PeriodicNotificationsService:
                 else:  # 7 days
                     message = _("renewal_reminder_7_days", days_left=days_left, end_date=end_date_str)
 
-                from bot.keyboards.inline.user_keyboards import get_renew_subscription_keyboard
-                keyboard = get_renew_subscription_keyboard(lang, self.i18n)
+                from bot.keyboards.inline.user_keyboards import get_subscribe_only_markup
+                keyboard = get_subscribe_only_markup(lang, self.i18n)
 
                 await self.bot.send_message(
                     chat_id=user.user_id,
@@ -262,42 +252,3 @@ class PeriodicNotificationsService:
         await session.commit()
         if sent_count > 0:
             logging.info(f"Sent {sent_count} referral reminders")
-
-    async def _send_support_reminders(self, session: AsyncSession, users: List[User]):
-        """Send support reminders to users."""
-        if not self.settings.SUPPORT_LINK:
-            logging.warning("SUPPORT_LINK not configured, skipping support reminders")
-            return
-
-        sent_count = 0
-        for user in users:
-            try:
-                lang = user.language_code or self.settings.DEFAULT_LANGUAGE
-                _ = lambda k, **kw: self.i18n.gettext(lang, k, **kw)
-
-                message = _("periodic_support_reminder", support_link=self.settings.SUPPORT_LINK)
-
-                await self.bot.send_message(
-                    chat_id=user.user_id,
-                    text=message,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                )
-
-                # Update last reminder sent (reuse referral field for tracking)
-                user.last_referral_reminder_sent = datetime.now(timezone.utc)
-                sent_count += 1
-
-                # Small delay to avoid rate limiting
-                await asyncio.sleep(0.5)
-
-            except TelegramForbiddenError:
-                logging.debug(f"User {user.user_id} blocked the bot, skipping support reminder")
-            except TelegramBadRequest as e:
-                logging.debug(f"Failed to send support reminder to {user.user_id}: {e}")
-            except Exception as e:
-                logging.error(f"Error sending support reminder to {user.user_id}: {e}")
-
-        await session.commit()
-        if sent_count > 0:
-            logging.info(f"Sent {sent_count} support reminders")

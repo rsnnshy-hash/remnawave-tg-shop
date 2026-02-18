@@ -48,38 +48,12 @@ class ReferralService:
                     "referee_new_end_date": None
                 }
 
-            # If configured to apply referral bonuses only once per invited user,
-            # check if the referee already has succeeded payments.
-            # Use getattr with a safe default (True) to avoid AttributeError if
-            # running with an older settings schema.
-            if getattr(self.settings, "REFERRAL_ONE_BONUS_PER_REFEREE", True):
-                try:
-                    succeeded_count = await payment_dal.count_user_succeeded_payments(
-                        session, referee_user_id, exclude_payment_id=current_payment_db_id
-                    )
-                    if succeeded_count and succeeded_count > 0:
-                        logging.info(
-                            f"Referral bonuses skipped for user {referee_user_id}: already has {succeeded_count} succeeded payments.")
-                        return {
-                            "referee_bonus_applied_days": None,
-                            "referee_new_end_date": None
-                        }
-                except Exception as e_cnt:
-                    logging.error(f"Failed counting succeeded payments for user {referee_user_id}: {e_cnt}")
+            # Note: First purchase check moved to bonus calculation section below
+            # to allow inviter bonuses on subsequent purchases
 
-            # Additionally, do not award referral bonuses if the user was active at payment time
-            # (has an active subscription now). This avoids giving bonuses to already active users.
-            if skip_if_active_before_payment:
-                try:
-                    if await self.subscription_service.has_active_subscription(session, referee_user_id):
-                        logging.info(
-                            f"Referral bonuses skipped for user {referee_user_id}: user currently has an active subscription.")
-                        return {
-                            "referee_bonus_applied_days": None,
-                            "referee_new_end_date": None
-                        }
-                except Exception as e_sub:
-                    logging.error(f"Failed to check active subscription for {referee_user_id}: {e_sub}")
+            # Note: skip_if_active_before_payment check removed
+            # Inviter should still get bonus even if referee has active subscription
+            # Referee bonus is controlled by is_first_purchase check below
 
             inviter_user_id = referee_user_model.referred_by_id
             inviter_user_model = await user_dal.get_user_by_id(
@@ -93,10 +67,30 @@ class ReferralService:
                 and inviter_user_model.first_name else self.i18n.gettext(
                     default_lang_for_placeholder, "friend_placeholder"))
 
-            inviter_bonus_days = self.settings.referral_bonus_inviter.get(
-                purchased_subscription_months)
-            referee_bonus_days = self.settings.referral_bonus_referee.get(
-                purchased_subscription_months)
+            # Check if this is the referee's first purchase
+            is_first_purchase = True
+            try:
+                succeeded_count = await payment_dal.count_user_succeeded_payments(
+                    session, referee_user_id, exclude_payment_id=current_payment_db_id
+                )
+                is_first_purchase = (succeeded_count is None or succeeded_count == 0)
+            except Exception as e_cnt:
+                logging.error(f"Failed counting succeeded payments for user {referee_user_id}: {e_cnt}")
+            
+            # Determine bonuses based on first purchase or not
+            if is_first_purchase:
+                # First purchase: inviter gets one-time bonus (default 15 days)
+                inviter_bonus_days = getattr(self.settings, 'REFERRAL_FIRST_PURCHASE_BONUS', 15)
+                # Referee already got bonus at registration, so no bonus here
+                referee_bonus_days = None
+                logging.info(f"First purchase by referee {referee_user_id}: inviter gets {inviter_bonus_days} days (referee got bonus at registration)")
+            else:
+                # Subsequent purchases: inviter gets bonus based on subscription period
+                inviter_bonus_days = self.settings.referral_bonus_inviter.get(
+                    purchased_subscription_months)
+                # Referee gets nothing on subsequent purchases
+                referee_bonus_days = None
+                logging.info(f"Subsequent purchase by referee {referee_user_id}: inviter gets {inviter_bonus_days} days, referee gets nothing")
 
             if inviter_bonus_days and inviter_bonus_days > 0:
                 if not inviter_user_model:

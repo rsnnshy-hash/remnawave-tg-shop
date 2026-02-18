@@ -11,7 +11,7 @@ from config.settings import Settings
 from .panel_api_service import PanelApiService
 from bot.middlewares.i18n import JsonI18n
 from bot.keyboards.inline.user_keyboards import get_subscribe_only_markup, get_autorenew_cancel_keyboard
-from db.dal import user_dal
+from db.dal import user_dal, webhook_dal
 
 EVENT_MAP = {
     "user.expires_in_72_hours": (3, "subscription_72h_notification"),
@@ -71,6 +71,15 @@ class PanelWebhookService:
                             from db.dal import subscription_dal
                             sub = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
                             if sub and sub.auto_renew_enabled and sub.provider == 'yookassa':
+                                # Idempotency: prevent duplicate auto-renew charges
+                                renew_event_id = f"auto_renew:{user_id}:{sub.subscription_id}:{sub.end_date.isoformat() if sub.end_date else 'none'}"
+                                is_new = await webhook_dal.mark_webhook_processed(
+                                    session, "panel_autorenew", renew_event_id, "auto_renew.24h"
+                                )
+                                if not is_new:
+                                    logging.info(f"Auto-renew duplicate ignored for user {user_id}, sub {sub.subscription_id}")
+                                    await session.commit()
+                                    return
                                 try:
                                     ok = await subscription_service.charge_subscription_renewal(session, sub)
                                     # If initiation succeeded, suppress the 24h reminder by returning early

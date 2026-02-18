@@ -15,7 +15,7 @@ from bot.services.subscription_service import SubscriptionService
 from bot.services.referral_service import ReferralService
 from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
 from bot.services.notification_service import NotificationService
-from db.dal import payment_dal, user_dal
+from db.dal import payment_dal, user_dal, webhook_dal
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
 from bot.utils.config_link import prepare_config_links
 
@@ -152,6 +152,16 @@ class CryptoPayService:
         referral_service: ReferralService = app["referral_service"]
 
         async with async_session_factory() as session:
+            # Atomic idempotency check: prevent duplicate webhook processing
+            cp_event_id = f"cryptopay:{invoice.invoice_id}"
+            is_new = await webhook_dal.mark_webhook_processed(
+                session, "cryptopay", cp_event_id, "invoice.paid"
+            )
+            if not is_new:
+                logging.info(f"CryptoPay webhook: duplicate ignored for invoice {invoice.invoice_id}")
+                await session.commit()
+                return
+
             try:
                 await payment_dal.update_provider_payment_and_status(
                     session,
@@ -174,7 +184,7 @@ class CryptoPayService:
                     referral_bonus = await referral_service.apply_referral_bonuses_for_payment(
                         session,
                         user_id,
-                        int(months) or 1,
+                        max(int(months), 1),
                         current_payment_db_id=payment_db_id,
                         skip_if_active_before_payment=False,
                     )

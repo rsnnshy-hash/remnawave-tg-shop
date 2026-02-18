@@ -9,15 +9,15 @@ from ..models import MessageLog, User
 
 async def create_message_log(session: AsyncSession,
                              log_data: dict) -> Optional[MessageLog]:
-
+    """Create a message log entry. Uses flush() instead of commit() to avoid
+    breaking the middleware-managed transaction lifecycle (DBSessionMiddleware
+    handles commit/rollback)."""
     try:
         log_entry = await create_message_log_no_commit(session, log_data)
-        await session.commit()
-        await session.refresh(log_entry)
+        await session.flush()
         return log_entry
     except Exception as e:
-        await session.rollback()
-        logging.error(f"Failed to create and commit message log: {e}",
+        logging.error(f"Failed to create message log: {e}",
                       exc_info=True)
         return None
 

@@ -92,9 +92,13 @@ async def show_ad_card(callback: types.CallbackQuery, settings: Settings, i18n_d
         await callback.answer("Language error.", show_alert=True)
         return
 
-    parts = callback.data.split(":")
-    camp_id = int(parts[2])
-    back_page = int(parts[3]) if len(parts) > 3 else 0
+    try:
+        parts = callback.data.split(":")
+        camp_id = int(parts[2])
+        back_page = int(parts[3]) if len(parts) > 3 else 0
+    except (ValueError, IndexError):
+        await callback.answer(_("error_occurred_try_again"), show_alert=True)
+        return
 
     camp = await ad_dal.get_campaign_by_id(session, camp_id)
     if not camp:

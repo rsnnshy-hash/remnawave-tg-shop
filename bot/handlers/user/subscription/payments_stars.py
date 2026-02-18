@@ -121,7 +121,11 @@ async def handle_successful_stars_payment(
         payment_db_id = int(parts[0])
         months = float(parts[1]) if len(parts) > 1 else 0
         sale_mode = parts[2] if len(parts) > 2 else "subscription"
-    except Exception:
+    except Exception as e_parse:
+        logging.error(
+            f"Stars payment: failed to parse invoice payload '{payload}': {e_parse}. "
+            f"User {message.from_user.id} was charged but subscription NOT activated!"
+        )
         return
 
     stars_amount = int(message.successful_payment.total_amount) if message.successful_payment else 0

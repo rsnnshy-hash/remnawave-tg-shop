@@ -160,11 +160,14 @@ async def promo_detail_handler(callback: types.CallbackQuery, i18n_data: dict, s
         text, keyboard = await get_promo_detail_text_and_keyboard(promo_id, session, i18n, current_lang)
         if text:
             await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            try:
+                await callback.answer()
+            except Exception:
+                pass
         else:
             await callback.answer(i18n.gettext(current_lang, "admin_promo_not_found"), show_alert=True)
     except (ValueError, IndexError):
         await callback.answer(i18n.gettext(current_lang, "admin_promo_not_found"), show_alert=True)
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("promo_toggle:"))
@@ -236,9 +239,12 @@ async def promo_activations_handler(callback: types.CallbackQuery, i18n_data: di
         builder.row(InlineKeyboardButton(text=_("admin_promo_back_to_detail_button"), callback_data=f"promo_detail:{promo_id}"))
 
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        try:
+            await callback.answer()
+        except Exception:
+            pass
     except (ValueError, IndexError):
         await callback.answer(_("admin_promo_not_found"), show_alert=True)
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("promo_export:"))

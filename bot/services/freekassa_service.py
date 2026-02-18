@@ -18,7 +18,7 @@ from bot.services.subscription_service import SubscriptionService
 from bot.services.referral_service import ReferralService
 from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
 from bot.services.notification_service import NotificationService
-from db.dal import payment_dal, user_dal
+from db.dal import payment_dal, user_dal, webhook_dal
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
 from bot.utils.config_link import prepare_config_links
 
@@ -253,7 +253,17 @@ class FreeKassaService:
             return web.Response(status=400, text="invalid_order_id")
 
         async with self.async_session_factory() as session:
-            payment = await payment_dal.get_payment_by_db_id(session, payment_db_id)
+            # Atomic idempotency check: prevent duplicate webhook processing
+            fk_event_id = f"freekassa:{order_id_str}:{provider_payment_id or ''}"
+            is_new = await webhook_dal.mark_webhook_processed(
+                session, "freekassa", fk_event_id, "payment.succeeded"
+            )
+            if not is_new:
+                logging.info(f"FreeKassa webhook: duplicate ignored for order {order_id_str}")
+                await session.commit()
+                return web.Response(text="YES")
+
+            payment = await payment_dal.get_payment_by_db_id_for_update(session, payment_db_id)
             if not payment:
                 logging.error(f"FreeKassa webhook: payment {payment_db_id} not found")
                 return web.Response(status=404, text="payment_not_found")

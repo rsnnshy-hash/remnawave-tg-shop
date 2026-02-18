@@ -413,11 +413,18 @@ class PanelApiService:
             user_uuid: str,
             update_payload: Dict[str, Any],
             log_response: bool = True) -> Optional[Dict[str, Any]]:
+        # The endpoint should be PATCH /users/{uuid}, not PATCH /users
+        endpoint = f"/users/{user_uuid}"
+        
+        # Ensure uuid is not in the body if the API strictly forbids it or just keep it safe
+        # Check if 'uuid' was in payload, maybe remove it if it causes issues, 
+        # but based on standard REST practices, having it in body usually isn't fatal unless validated strictly.
+        # However, the previous code added it if missing. We can leave it or ensure it matches.
         if 'uuid' not in update_payload:
             update_payload['uuid'] = user_uuid
 
         full_response = await self._request("PATCH",
-                                            "/users",
+                                            endpoint,
                                             json=update_payload,
                                             log_full_response=log_response)
         if full_response and not full_response.get(

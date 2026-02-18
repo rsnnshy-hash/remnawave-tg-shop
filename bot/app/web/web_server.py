@@ -100,5 +100,9 @@ async def build_and_start_web_app(
         f"AIOHTTP server started on http://{settings.WEB_SERVER_HOST}:{settings.WEB_SERVER_PORT}"
     )
 
-    # Run until cancelled
-    await asyncio.Event().wait()
+    try:
+        # Run until cancelled
+        await asyncio.Event().wait()
+    finally:
+        await web_app_runner.cleanup()
+        logging.info("AIOHTTP AppRunner cleaned up.")

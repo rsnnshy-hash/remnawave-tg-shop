@@ -250,7 +250,7 @@ async def view_subscription_details_callback(
     """View details of a specific subscription."""
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n = i18n_data.get("i18n_instance")
-    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw) if i18n else key
 
     try:
         sub_id = int(callback.data.split(":")[1])
@@ -271,7 +271,7 @@ async def view_subscription_details_callback(
         return
 
     end_date = sub.end_date
-    days_left = (end_date.date() - datetime.now().date()).days if end_date else 0
+    days_left = (end_date.date() - datetime.now(timezone.utc).date()).days if end_date else 0
     
     config_link_raw = panel_user_data.get("subscriptionUrl")
     from bot.utils.config_link import prepare_config_links
@@ -341,7 +341,7 @@ async def delete_subscription_confirm_callback(
     """Show confirmation dialog for deleting a subscription."""
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n = i18n_data.get("i18n_instance")
-    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw) if i18n else key
 
     try:
         sub_id = int(callback.data.split(":")[1])
@@ -384,11 +384,12 @@ async def confirm_delete_subscription_callback(
     settings: Settings,
     session: AsyncSession,
     panel_service: PanelApiService,
+    subscription_service: SubscriptionService,
 ):
     """Actually delete the subscription after confirmation."""
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n = i18n_data.get("i18n_instance")
-    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw) if i18n else key
 
     try:
         sub_id = int(callback.data.split(":")[1])
@@ -425,7 +426,7 @@ async def confirm_delete_subscription_callback(
 
     # Return to main menu
     from bot.handlers.user.start import send_main_menu
-    await send_main_menu(callback, settings, i18n_data, session)
+    await send_main_menu(callback, settings, i18n_data, subscription_service, session)
 
 
 async def my_subscription_command_handler(
@@ -440,7 +441,7 @@ async def my_subscription_command_handler(
     target = event.message if isinstance(event, types.CallbackQuery) else event
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n = i18n_data.get("i18n_instance")
-    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw) if i18n else key
 
     if not i18n or not target:
         if isinstance(event, types.Message):
@@ -487,7 +488,7 @@ async def my_subscription_command_handler(
         # Single subscription - show detailed view directly
         sub = all_subs[0]
         end_date = sub.get("end_date")
-        days_left = (end_date.date() - datetime.now().date()).days if end_date else 0
+        days_left = (end_date.date() - datetime.now(timezone.utc).date()).days if end_date else 0
         
         def _fmt_gb(val: Optional[float]) -> str:
             if val is None:
@@ -559,7 +560,7 @@ async def my_devices_command_handler(
     target = event.message if isinstance(event, types.CallbackQuery) else event
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n = i18n_data.get("i18n_instance")
-    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+    get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw) if i18n else key
 
     if not i18n or not target:
         if isinstance(event, types.Message):

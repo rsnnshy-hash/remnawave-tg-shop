@@ -119,19 +119,27 @@ async def delete_promo_code(session: AsyncSession, promo_id: int) -> Optional[Pr
 
 async def increment_promo_code_usage(
         session: AsyncSession, promo_code_id: int) -> Optional[PromoCode]:
-    promo = await get_promo_code_by_id(session, promo_code_id)
-    if promo:
-        if promo.current_activations < promo.max_activations:
-            promo.current_activations += 1
-            await session.flush()
-            await session.refresh(promo)
-            return promo
-        else:
-            logging.warning(
-                f"Promo code {promo.code} (ID: {promo_code_id}) already reached max activations."
-            )
-            return None
-    return None
+    """Atomically increment promo code usage using SQL UPDATE with condition.
+    Prevents race condition where two concurrent requests both pass the
+    activations < max check."""
+    stmt = (
+        update(PromoCode)
+        .where(
+            PromoCode.promo_code_id == promo_code_id,
+            PromoCode.current_activations < PromoCode.max_activations,
+        )
+        .values(current_activations=PromoCode.current_activations + 1)
+        .returning(PromoCode.promo_code_id)
+    )
+    result = await session.execute(stmt)
+    row = result.first()
+    if row is None:
+        logging.warning(
+            f"Promo code ID {promo_code_id} already at max activations or not found."
+        )
+        return None
+    await session.flush()
+    return await get_promo_code_by_id(session, promo_code_id)
 
 
 async def get_user_activation_for_promo(

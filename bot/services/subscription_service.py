@@ -675,7 +675,11 @@ class SubscriptionService:
 
         try:
             months_int = int(months)
-        except Exception:
+            if months_int < 1:
+                logging.warning(f"Invalid months value {months} for user {user_id}, defaulting to 1")
+                months_int = 1
+        except (ValueError, TypeError):
+            logging.warning(f"Cannot convert months={months!r} to int for user {user_id}, defaulting to 1")
             months_int = 1
 
         current_active_sub = await subscription_dal.get_active_subscription_by_user_id(
@@ -703,9 +707,8 @@ class SubscriptionService:
                 and promo_model.is_active
                 and promo_model.current_activations < promo_model.max_activations
             ):
-                applied_promo_bonus_days = promo_model.bonus_days
-                duration_days_total += applied_promo_bonus_days
-
+                # Record activation BEFORE adding bonus days to prevent giving days
+                # if the activation fails (e.g., duplicate user+promo)
                 activation = await promo_code_dal.record_promo_activation(
                     session,
                     promo_code_id_from_payment,
@@ -713,12 +716,15 @@ class SubscriptionService:
                     payment_id=payment_db_id,
                 )
                 if activation:
+                    applied_promo_bonus_days = promo_model.bonus_days
+                    duration_days_total += applied_promo_bonus_days
                     await promo_code_dal.increment_promo_code_usage(
                         session, promo_code_id_from_payment
                     )
                 else:
                     logging.warning(
-                        f"Promo code {promo_code_id_from_payment} was already activated by user {user_id}, but bonus applied via payment {payment_db_id}."
+                        f"Promo code {promo_code_id_from_payment} already activated by user {user_id}, "
+                        f"bonus days NOT applied for payment {payment_db_id}."
                     )
             else:
                 logging.warning(
@@ -787,9 +793,19 @@ class SubscriptionService:
             panel_user_uuid, panel_update_payload
         )
         if not updated_panel_user or updated_panel_user.get("error"):
-            logging.warning(
-                f"Panel user details update FAILED for paid sub user {panel_user_uuid}. Response: {updated_panel_user}"
+            logging.error(
+                f"CRITICAL: Panel user details update FAILED for paid sub user {panel_user_uuid} "
+                f"(payment {payment_db_id}). Local subscription created but panel NOT updated. "
+                f"Response: {updated_panel_user}. Manual sync required!"
             )
+            # Mark subscription as needing sync, but don't delete it — money was already charged
+            try:
+                await subscription_dal.update_subscription(
+                    session, new_or_updated_sub.subscription_id,
+                    {"status_from_panel": "PANEL_SYNC_FAILED"}
+                )
+            except Exception:
+                pass
             return None
 
         final_subscription_url = updated_panel_user.get("subscriptionUrl")

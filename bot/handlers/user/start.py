@@ -398,6 +398,25 @@ async def start_command_handler(message: types.Message,
                     )
                 except Exception as e:
                     logging.error(f"Failed to send new user notification: {e}")
+                
+                # Give referral bonus (7 days free) if user registered via referral link
+                if referred_by_user_id:
+                    try:
+                        bonus_days = getattr(settings, 'REFERRAL_FIRST_PURCHASE_BONUS_REFEREE', 7)
+                        ref_bonus_result = await subscription_service.activate_referral_bonus_subscription(
+                            session, user_id, bonus_days
+                        )
+                        if ref_bonus_result and ref_bonus_result.get("activated"):
+                            logging.info(f"Referral bonus {bonus_days} days given to new user {user_id}")
+                            try:
+                                await message.answer(
+                                    _("referral_bonus_received", days=bonus_days),
+                                    parse_mode="HTML"
+                                )
+                            except Exception:
+                                pass
+                    except Exception as e_ref_bonus:
+                        logging.error(f"Failed to activate referral bonus for user {user_id}: {e_ref_bonus}")
         except Exception as e_create:
 
             logging.error(
@@ -538,6 +557,45 @@ async def verify_channel_subscription_callback(
         callback, settings, i18n, current_lang, session, db_user)
     if not verified:
         return
+
+    # Give referral bonus (7 days free) if user came via referral link
+    # Only give bonus if user has no existing subscriptions (prevents double bonus on re-verify)
+    if db_user and db_user.referred_by_id:
+        from db.dal import subscription_dal as _sub_dal
+        has_any_sub = await _sub_dal.has_any_subscription_for_user(session, callback.from_user.id)
+        if not has_any_sub:
+            try:
+                bonus_days = getattr(settings, 'REFERRAL_FIRST_PURCHASE_BONUS_REFEREE', 7)
+                ref_bonus_result = await subscription_service.activate_referral_bonus_subscription(
+                    session, callback.from_user.id, bonus_days
+                )
+                if ref_bonus_result and ref_bonus_result.get("activated"):
+                    logging.info(f"Referral bonus {bonus_days} days given to user {callback.from_user.id}")
+                    if i18n:
+                        _t = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
+                        try:
+                            if callback.message:
+                                await callback.message.answer(_t("referral_bonus_received", days=bonus_days), parse_mode="HTML")
+                        except Exception:
+                            pass
+                    # Notify inviter about new referral
+                    try:
+                        inviter_id = db_user.referred_by_id
+                        inviter_user = await user_dal.get_user_by_id(session, inviter_id)
+                        inviter_lang = inviter_user.language_code if inviter_user else settings.DEFAULT_LANGUAGE
+                        inviter_bonus = getattr(settings, 'REFERRAL_FIRST_PURCHASE_BONUS', 15)
+                        friend_name = callback.from_user.first_name or "Друг"
+                        _inv = lambda key, **kw: i18n.gettext(inviter_lang, key, **kw) if i18n else key
+                        await callback.bot.send_message(
+                            inviter_id,
+                            _inv("referral_friend_joined", friend_name=friend_name, bonus_days=inviter_bonus),
+                            parse_mode="HTML"
+                        )
+                        logging.info(f"Notified inviter {inviter_id} about new referral")
+                    except Exception as e_inv:
+                        logging.error(f"Failed to notify inviter: {e_inv}")
+            except Exception as e_ref:
+                logging.error(f"Failed to activate referral bonus: {e_ref}")
 
     if db_user and db_user.language_code:
         current_lang = db_user.language_code
@@ -713,5 +771,5 @@ async def main_action_callback_handler(
     else:
         i18n: Optional[JsonI18n] = i18n_data.get("i18n_instance")
         _ = lambda key, **kwargs: i18n.gettext(
-            i18n_data.get("current_language"), key, **kw) if i18n else key
+            i18n_data.get("current_language"), key, **kwargs) if i18n else key
         await callback.answer(_("main_menu_unknown_action"), show_alert=True)

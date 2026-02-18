@@ -310,7 +310,6 @@ async def run_bot(settings_param: Settings):
     logging.info(f"Decision: Run AIOHTTP server: ENABLED (required for webhooks)")
     logging.info(f"--- End Bot Run Mode Decision ---")
 
-    web_app_runner = None
     main_tasks = []
 
     # Only run AIOHTTP server for webhook mode
@@ -344,10 +343,6 @@ async def run_bot(settings_param: Settings):
                         f"Error during cancellation of task '{task.get_name()}': {e_task_cancel}",
                         exc_info=True,
                     )
-
-        if web_app_runner:
-            await web_app_runner.cleanup()
-            logging.info("AIOHTTP AppRunner cleaned up.")
 
         await dp.emit_shutdown()
         logging.info("Dispatcher shutdown sequence emitted.")

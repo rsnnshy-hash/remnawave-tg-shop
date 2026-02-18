@@ -26,7 +26,24 @@ from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
 from bot.utils.config_link import prepare_config_links
 
-payment_processing_lock = asyncio.Lock()
+# Per-payment locks to prevent concurrent processing of the same payment,
+# without blocking unrelated payments (unlike the old global lock).
+_payment_locks: dict[str, asyncio.Lock] = {}
+_payment_locks_meta_lock = asyncio.Lock()
+
+
+async def _get_payment_lock(payment_id: str) -> asyncio.Lock:
+    """Get or create a lock for a specific payment ID."""
+    async with _payment_locks_meta_lock:
+        if payment_id not in _payment_locks:
+            _payment_locks[payment_id] = asyncio.Lock()
+        return _payment_locks[payment_id]
+
+
+async def _cleanup_payment_lock(payment_id: str) -> None:
+    """Remove a payment lock after processing is done."""
+    async with _payment_locks_meta_lock:
+        _payment_locks.pop(payment_id, None)
 
 YOOKASSA_EVENT_PAYMENT_SUCCEEDED = 'payment.succeeded'
 YOOKASSA_EVENT_PAYMENT_CANCELED = 'payment.canceled'
@@ -561,7 +578,9 @@ async def yookassa_webhook_route(request: web.Request):
             "payment_method": pm_dict,
         }
 
-        async with payment_processing_lock:
+        yk_payment_id = payment_dict_for_processing.get('id', 'unknown')
+        per_payment_lock = await _get_payment_lock(f"yk:{yk_payment_id}")
+        async with per_payment_lock:
             async with async_session_factory() as session:
                 try:
                     # Idempotency check: prevent duplicate processing
@@ -680,6 +699,7 @@ async def yookassa_webhook_route(request: web.Request):
                         exc_info=True)
                     return web.Response(
                         status=200, text="ok_internal_processing_error_logged")
+            await _cleanup_payment_lock(f"yk:{yk_payment_id}")
 
         return web.Response(status=200, text="ok")
 

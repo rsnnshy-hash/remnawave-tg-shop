@@ -6,7 +6,7 @@ from aiogram.types import LabeledPrice
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import Settings
-from db.dal import payment_dal, user_dal
+from db.dal import payment_dal, user_dal, webhook_dal
 from .subscription_service import SubscriptionService
 from .referral_service import ReferralService
 from bot.middlewares.i18n import JsonI18n
@@ -73,11 +73,21 @@ class StarsService:
                                          i18n_data: dict,
                                          sale_mode: str = "subscription") -> None:
         try:
+            # Idempotency check for Stars payments
+            stars_event_id = f"stars:{payment_db_id}:{message.successful_payment.provider_payment_charge_id}"
+            is_new = await webhook_dal.mark_webhook_processed(
+                session, "telegram_stars", stars_event_id, "payment.succeeded"
+            )
+            if not is_new:
+                logging.info(f"Stars payment: duplicate ignored for payment {payment_db_id}")
+                await session.commit()
+                return
+
             await payment_dal.update_provider_payment_and_status(
                 session, payment_db_id,
                 message.successful_payment.provider_payment_charge_id,
                 "succeeded")
-            await session.commit()
+            await session.flush()
         except Exception as e_upd:
             await session.rollback()
             logging.error(
@@ -85,7 +95,8 @@ class StarsService:
                 exc_info=True)
             return
 
-        activation_details = await self.subscription_service.activate_subscription(
+        try:
+            activation_details = await self.subscription_service.activate_subscription(
             session,
             message.from_user.id,
             int(months) if sale_mode != "traffic" else 0,
@@ -95,21 +106,28 @@ class StarsService:
             sale_mode=sale_mode,
             traffic_gb=months if sale_mode == "traffic" else None,
         )
-        if not activation_details or not activation_details.get("end_date"):
-            logging.error(
-                f"Failed to activate subscription after stars payment for user {message.from_user.id}")
-            return
+            if not activation_details or not activation_details.get("end_date"):
+                logging.error(
+                    f"Failed to activate subscription after stars payment for user {message.from_user.id}")
+                await session.rollback()
+                return
 
-        referral_bonus = None
-        if sale_mode != "traffic":
-            referral_bonus = await self.referral_service.apply_referral_bonuses_for_payment(
-                session,
-                message.from_user.id,
-                int(months) or 1,
-                current_payment_db_id=payment_db_id,
-                skip_if_active_before_payment=False,
-            )
-        await session.commit()
+            referral_bonus = None
+            if sale_mode != "traffic":
+                referral_bonus = await self.referral_service.apply_referral_bonuses_for_payment(
+                    session,
+                    message.from_user.id,
+                    max(int(months), 1),
+                    current_payment_db_id=payment_db_id,
+                    skip_if_active_before_payment=False,
+                )
+            await session.commit()
+        except Exception as e_activate:
+            await session.rollback()
+            logging.error(
+                f"Stars payment {payment_db_id}: activation failed after payment update, rolled back: {e_activate}",
+                exc_info=True)
+            return
 
         applied_days = referral_bonus.get("referee_bonus_applied_days") if referral_bonus else None
         final_end = referral_bonus.get("referee_new_end_date") if referral_bonus else None

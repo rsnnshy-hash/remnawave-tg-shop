@@ -16,7 +16,7 @@ from bot.services.subscription_service import SubscriptionService
 from bot.services.referral_service import ReferralService
 from bot.services.notification_service import NotificationService
 from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
-from db.dal import payment_dal, user_dal
+from db.dal import payment_dal, user_dal, webhook_dal
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
 from bot.utils.config_link import prepare_config_links
 
@@ -180,15 +180,29 @@ class SeverPayService:
             payment_db_id = None
 
         async with self.async_session_factory() as session:
+            # Atomic idempotency check: prevent duplicate webhook processing
+            sp_event_id = f"severpay:{provider_payment_id or order_id_raw}"
+            is_new = await webhook_dal.mark_webhook_processed(
+                session, "severpay", sp_event_id, f"payin.{status}"
+            )
+            if not is_new:
+                logging.info("SeverPay webhook: duplicate ignored for provider_id=%s", provider_payment_id)
+                await session.commit()
+                return web.json_response({"status": True, "msg": "already_processed"})
+
             payment = None
             if payment_db_id is not None:
-                payment = await payment_dal.get_payment_by_db_id(session, payment_db_id)
+                payment = await payment_dal.get_payment_by_db_id_for_update(session, payment_db_id)
             if not payment and provider_payment_id:
-                payment = await payment_dal.get_payment_by_provider_payment_id(session, provider_payment_id)
+                payment = await payment_dal.get_payment_by_provider_payment_id_for_update(session, provider_payment_id)
 
             if not payment:
                 logging.error("SeverPay webhook: payment not found (order_id=%s, provider_id=%s)", order_id_raw, provider_payment_id)
                 return web.json_response({"status": False, "msg": "payment_not_found"}, status=404)
+
+            if payment.status == "succeeded":
+                logging.info("SeverPay webhook: payment %s already succeeded", payment.payment_id)
+                return web.json_response({"status": True, "msg": "already_succeeded"})
 
             payment_months = payment.subscription_duration_months or 1
             sale_mode = "traffic" if self.settings.traffic_sale_mode else "subscription"

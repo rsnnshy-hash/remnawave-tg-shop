@@ -80,6 +80,7 @@ async def request_trial_confirmation_handler(
     config_link_display_for_trial = None
     config_link_for_trial = None
     connect_button_url_for_trial = None
+    end_date_obj = None
 
     if activation_result and activation_result.get("activated"):
         try:
@@ -232,6 +233,7 @@ async def confirm_activate_trial_handler(
     config_link_display_for_trial = None
     config_link_for_trial = None
     connect_button_url_for_trial = None
+    end_date_obj = None
 
     if activation_result and activation_result.get("activated"):
         try:

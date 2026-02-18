@@ -1,4 +1,5 @@
 import json
+import hmac
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, Dict, Any, Tuple
@@ -13,7 +14,7 @@ from bot.services.subscription_service import SubscriptionService
 from bot.services.referral_service import ReferralService
 from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
 from bot.services.notification_service import NotificationService
-from db.dal import payment_dal, user_dal
+from db.dal import payment_dal, user_dal, webhook_dal
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
 from bot.utils.config_link import prepare_config_links
 
@@ -133,9 +134,11 @@ class PlategaService:
             logging.error("Platega webhook: failed to parse JSON: %s", exc)
             return web.Response(status=400, text="bad_request")
 
-        header_merchant = request.headers.get("X-MerchantId")
-        header_secret = request.headers.get("X-Secret")
-        if header_merchant != self.merchant_id or header_secret != self.secret:
+        header_merchant = request.headers.get("X-MerchantId") or ""
+        header_secret = request.headers.get("X-Secret") or ""
+        # Use constant-time comparison to prevent timing attacks
+        if not hmac.compare_digest(header_merchant, self.merchant_id or "") or \
+           not hmac.compare_digest(header_secret, self.secret or ""):
             logging.error("Platega webhook: invalid auth headers")
             return web.Response(status=403, text="forbidden")
 
@@ -149,7 +152,17 @@ class PlategaService:
             return web.Response(status=400, text="missing_fields")
 
         async with self.async_session_factory() as session:
-            payment = await payment_dal.get_payment_by_provider_payment_id(session, transaction_id)
+            # Atomic idempotency check: prevent duplicate webhook processing
+            pl_event_id = f"platega:{transaction_id}"
+            is_new = await webhook_dal.mark_webhook_processed(
+                session, "platega", pl_event_id, f"payment.{status.lower()}"
+            )
+            if not is_new:
+                logging.info("Platega webhook: duplicate ignored for transaction %s", transaction_id)
+                await session.commit()
+                return web.Response(text="ok")
+
+            payment = await payment_dal.get_payment_by_provider_payment_id_for_update(session, transaction_id)
             if not payment:
                 logging.error("Platega webhook: payment not found for transaction %s", transaction_id)
                 return web.Response(status=404, text="payment_not_found")
