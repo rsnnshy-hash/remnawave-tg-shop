@@ -1,12 +1,15 @@
 """
-Rate limiting middleware for webhook endpoints.
+Rate limiting middleware for webhook endpoints and Telegram messages.
 Protects against flood attacks and abuse.
 """
 import time
 import logging
 from collections import defaultdict
-from typing import Dict, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional, Set, Tuple, Union
+
 from aiohttp import web
+from aiogram import BaseMiddleware
+from aiogram.types import Message, CallbackQuery
 
 # Rate limit configuration
 RATE_LIMIT_REQUESTS = 100  # Max requests per window
@@ -131,3 +134,120 @@ def cleanup_rate_limit_storage():
 
     if expired_keys:
         logging.debug(f"Rate limit cleanup: removed {len(expired_keys)} expired entries")
+
+
+# ---------------------------------------------------------------------------
+# Telegram per-user rate limiter (aiogram BaseMiddleware)
+# ---------------------------------------------------------------------------
+
+# Maximum tracked users before forced cleanup
+_TG_MAX_STORAGE_SIZE = 50_000
+
+
+class TelegramRateLimitMiddleware(BaseMiddleware):
+    """
+    Aiogram middleware that rate-limits per Telegram user.
+
+    Tracks message and callback_query counts per user within a rolling
+    60-second window.  Admin users are always allowed through.
+    """
+
+    def __init__(
+        self,
+        messages_per_minute: int = 30,
+        callbacks_per_minute: int = 60,
+        admin_ids: Optional[Set[int]] = None,
+        enabled: bool = True,
+    ) -> None:
+        super().__init__()
+        self.messages_per_minute = messages_per_minute
+        self.callbacks_per_minute = callbacks_per_minute
+        self.admin_ids: Set[int] = admin_ids or set()
+        self.enabled = enabled
+        # Key: (user_id, event_type), Value: list of timestamps
+        self._buckets: Dict[tuple, list] = defaultdict(list)
+
+    # ---- internal helpers --------------------------------------------------
+
+    def _cleanup_bucket(self, key: tuple, now: float) -> list:
+        """Remove timestamps older than 60 seconds and return the bucket."""
+        bucket = self._buckets[key]
+        cutoff = now - 60.0
+        # Fast: timestamps are appended in order, so we can bisect
+        while bucket and bucket[0] < cutoff:
+            bucket.pop(0)
+        return bucket
+
+    def _check(self, user_id: int, event_type: str, limit: int) -> bool:
+        """
+        Return True if the user is within the rate limit for *event_type*.
+        If allowed, the current timestamp is recorded.
+        """
+        now = time.monotonic()
+        key = (user_id, event_type)
+        bucket = self._cleanup_bucket(key, now)
+
+        if len(bucket) >= limit:
+            return False  # rate-limited
+
+        bucket.append(now)
+        return True
+
+    def _maybe_gc(self) -> None:
+        """Evict stale entries when storage grows too large."""
+        if len(self._buckets) <= _TG_MAX_STORAGE_SIZE:
+            return
+        now = time.monotonic()
+        cutoff = now - 120.0
+        stale = [k for k, v in self._buckets.items() if not v or v[-1] < cutoff]
+        for k in stale:
+            del self._buckets[k]
+        if stale:
+            logging.debug("TG rate limit GC: removed %d stale buckets", len(stale))
+
+    # ---- aiogram middleware entry point ------------------------------------
+
+    async def __call__(
+        self,
+        handler: Callable[[Union[Message, CallbackQuery], Dict[str, Any]], Awaitable[Any]],
+        event: Union[Message, CallbackQuery],
+        data: Dict[str, Any],
+    ) -> Any:
+        if not self.enabled:
+            return await handler(event, data)
+
+        user = event.from_user
+        if user is None:
+            return await handler(event, data)
+
+        # Admins are never rate-limited
+        if user.id in self.admin_ids:
+            return await handler(event, data)
+
+        # Periodic garbage collection
+        self._maybe_gc()
+
+        # Determine event type and its limit
+        if isinstance(event, Message):
+            event_type = "message"
+            limit = self.messages_per_minute
+        elif isinstance(event, CallbackQuery):
+            event_type = "callback"
+            limit = self.callbacks_per_minute
+        else:
+            return await handler(event, data)
+
+        if not self._check(user.id, event_type, limit):
+            logging.warning(
+                "Telegram rate limit exceeded: user=%d type=%s limit=%d/min",
+                user.id, event_type, limit,
+            )
+            # Silently drop the update (don't spam the user)
+            if isinstance(event, CallbackQuery):
+                try:
+                    await event.answer("⏳ Too many requests. Please wait a moment.", show_alert=False)
+                except Exception:
+                    pass
+            return  # drop
+
+        return await handler(event, data)
